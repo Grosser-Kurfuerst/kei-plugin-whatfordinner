@@ -17,6 +17,7 @@ import (
 type Plugin struct {
 	catalog *catalog.Catalog
 	service *decision.Service
+	polls   *decision.PollService
 }
 
 var _ bot.Plugin = (*Plugin)(nil)
@@ -48,11 +49,13 @@ func (p *Plugin) Setup(ctx context.Context, reg bot.Registrar) error {
 	if pc.Storage == nil {
 		return fmt.Errorf("dinner: missing storage")
 	}
-	service, err := decision.New(c, state.New(pc.Storage), time.Now, rand.Float64)
+	store := state.New(pc.Storage)
+	service, err := decision.New(c, store, time.Now, rand.Float64)
 	if err != nil {
 		return fmt.Errorf("dinner service: %w", err)
 	}
 	p.service = service
+	p.polls = decision.NewPollService(service, store)
 	reg.OnCommand("dinner", p.handle, bot.WithID("dinner:command"))
 	return nil
 }

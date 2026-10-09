@@ -103,6 +103,39 @@ func TestDailyDecisionAndReroll(t *testing.T) {
 	}
 }
 
+func TestPersonalRecommendationUsesConversationProfile(t *testing.T) {
+	now := time.Date(2026, 10, 10, 10, 0, 0, 0, time.UTC)
+	store := newTestStore()
+	cheap, expensive := int64(1800), int64(3000)
+	s := service(t, []catalog.Option{
+		{ID: "a", Name: "A", Enabled: true, PriceCents: &expensive, Tags: []string{"牛肉"}},
+		{ID: "b", Name: "B", Enabled: true, PriceCents: &cheap},
+	}, store, &now)
+	ctx := context.Background()
+	first, err := s.RecommendFor(ctx, scope, Profile{})
+	if err != nil || first.Option.ID != "a" {
+		t.Fatalf("%+v %v", first, err)
+	}
+	filtered := Profile{BudgetCents: 1800, ExcludedTags: []string{"牛肉"}}
+	second, err := s.RecommendFor(ctx, scope, filtered)
+	if err != nil || second.Option.ID != "b" {
+		t.Fatalf("changed conversation conditions did not reset personal round: %+v %v", second, err)
+	}
+	if _, err := s.RerollFor(ctx, scope, filtered); !errors.Is(err, ErrRoundExhausted) {
+		t.Fatal(err)
+	}
+	if _, err := s.MarkEaten(ctx, scope); err != nil {
+		t.Fatal(err)
+	}
+	third, err := s.RecommendFor(ctx, scope, Profile{})
+	if err != nil || third.Option.ID != "b" || !third.Eaten {
+		t.Fatalf("new conversation conditions replaced eaten snapshot: %+v %v", third, err)
+	}
+	if records, err := s.History(ctx, scope); err != nil || len(records) != 1 || records[0].Option.ID != "b" {
+		t.Fatalf("personal history changed: %+v %v", records, err)
+	}
+}
+
 func TestShanghaiDateBoundary(t *testing.T) {
 	now := time.Date(2026, 10, 9, 15, 59, 0, 0, time.UTC)
 	store := newTestStore()

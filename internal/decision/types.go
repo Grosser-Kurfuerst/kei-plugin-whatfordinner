@@ -1,4 +1,4 @@
-// Package decision 实现个人晚饭决策和状态转换。
+// Package decision 实现个人晚饭推荐与会话投票的状态转换。
 package decision
 
 import (
@@ -14,7 +14,7 @@ type Scope struct {
 	UserID   string `json:"user_id"`
 }
 
-// Profile 保存个人筛选条件；预算为 0 表示不限，忌口按标签精确匹配。
+// Profile 保存筛选条件；预算为 0 表示不限，忌口按标签精确匹配。
 type Profile struct {
 	BudgetCents  int64    `json:"budget_cents"`
 	ExcludedTags []string `json:"excluded_tags"`
@@ -68,6 +68,6 @@ var (
 	ErrNoCandidates       = errors.New("暂无可选项，请检查候选清单、预算和忌口。")
 	ErrRoundExhausted     = errors.New("本轮候选已选完，保留当前结果。")
 	ErrCurrentUnavailable = errors.New("当前选项已不可用，请发送 /dinner 换一个。")
-	ErrNoCurrent          = errors.New("今天还没有推荐，请先发送 /dinner。")
+	ErrNoCurrent          = errors.New("今天还没有个人推荐，请先发送 /dinner 推荐。")
 	ErrAlreadyEaten       = errors.New("今天已吃并记录，明天再推荐。")
 )

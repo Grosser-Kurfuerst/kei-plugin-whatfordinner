@@ -33,12 +33,22 @@ func New(c *catalog.Catalog, store Store, now func() time.Time, randomFloat func
 
 // Recommend 返回有效的当前结果，没有结果时才抽选。
 func (s *Service) Recommend(ctx context.Context, scope Scope) (Recommendation, error) {
-	return s.choose(ctx, scope, false)
+	return s.choose(ctx, scope, false, nil)
 }
 
 // Reroll 排除本轮已经推荐的 ID 后抽选。
 func (s *Service) Reroll(ctx context.Context, scope Scope) (Recommendation, error) {
-	return s.choose(ctx, scope, true)
+	return s.choose(ctx, scope, true, nil)
+}
+
+// RecommendFor 在当前会话的筛选条件下生成个人推荐，历史仍归属于个人。
+func (s *Service) RecommendFor(ctx context.Context, scope Scope, profile Profile) (Recommendation, error) {
+	return s.choose(ctx, scope, false, &profile)
+}
+
+// RerollFor 在当前会话的筛选条件下换选个人推荐。
+func (s *Service) RerollFor(ctx context.Context, scope Scope, profile Profile) (Recommendation, error) {
+	return s.choose(ctx, scope, true, &profile)
 }
 
 func (s *Service) load(ctx context.Context, scope Scope, now time.Time) (UserState, error) {
@@ -64,13 +74,20 @@ func (s *Service) load(ctx context.Context, scope Scope, now time.Time) (UserSta
 	return state, nil
 }
 
-func (s *Service) choose(ctx context.Context, scope Scope, reroll bool) (Recommendation, error) {
+func (s *Service) choose(ctx context.Context, scope Scope, reroll bool, profile *Profile) (Recommendation, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := s.now().In(s.location)
 	state, err := s.load(ctx, scope, now)
 	if err != nil {
 		return Recommendation{}, err
+	}
+	if profile != nil && (state.Profile.BudgetCents != profile.BudgetCents || !slices.Equal(state.Profile.ExcludedTags, profile.ExcludedTags)) {
+		state.Profile = Profile{BudgetCents: profile.BudgetCents, ExcludedTags: slices.Clone(profile.ExcludedTags)}
+		if !state.Daily.Eaten {
+			state.Daily.Current = nil
+			state.Daily.TriedIDs = nil
+		}
 	}
 	if state.Daily.Eaten {
 		if reroll {
@@ -90,18 +107,13 @@ func (s *Service) choose(ctx context.Context, scope Scope, reroll bool) (Recomme
 		tried[id] = true
 	}
 	var available []WeightedOption
-	eligible := 0
-	for _, option := range s.catalog.List() {
-		if !matches(option, state.Profile) {
-			continue
-		}
-		eligible++
-		if !tried[option.ID] {
-			weight, _ := Weight(option.ID, state.History, now)
-			available = append(available, WeightedOption{Option: option, Weight: weight})
+	eligible := s.candidates(state.Profile, state.History, now)
+	for _, item := range eligible {
+		if !tried[item.Option.ID] {
+			available = append(available, item)
 		}
 	}
-	if eligible == 0 {
+	if len(eligible) == 0 {
 		return Recommendation{}, ErrNoCandidates
 	}
 	if len(available) == 0 {
@@ -185,16 +197,62 @@ func (s *Service) SetBudget(ctx context.Context, scope Scope, cents int64) (Prof
 
 // SetExcludedTags 替换忌口列表并去重，空列表表示无忌口。
 func (s *Service) SetExcludedTags(ctx context.Context, scope Scope, tags []string) (Profile, error) {
+	unique, err := uniqueTags(tags)
+	if err != nil {
+		return Profile{}, err
+	}
+	return s.updateProfile(ctx, scope, func(p *Profile) { p.ExcludedTags = unique })
+}
+
+func uniqueTags(tags []string) ([]string, error) {
 	unique := make([]string, 0, len(tags))
 	for _, tag := range tags {
 		if strings.TrimSpace(tag) == "" {
-			return Profile{}, fmt.Errorf("忌口标签不能为空")
+			return nil, fmt.Errorf("忌口标签不能为空")
 		}
 		if !slices.Contains(unique, tag) {
 			unique = append(unique, tag)
 		}
 	}
-	return s.updateProfile(ctx, scope, func(p *Profile) { p.ExcludedTags = unique })
+	return unique, nil
+}
+
+func (s *Service) candidates(profile Profile, history []MealRecord, now time.Time) []WeightedOption {
+	var items []WeightedOption
+	for _, option := range s.catalog.List() {
+		if matches(option, profile) {
+			weight, _ := Weight(option.ID, history, now)
+			items = append(items, WeightedOption{Option: option, Weight: weight})
+		}
+	}
+	return items
+}
+
+// suggest 为新投票列表抽选至多五项，使用发起人的实际用餐历史，不写个人状态。
+func (s *Service) suggest(ctx context.Context, scope Scope, profile Profile) ([]OptionSnapshot, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := s.now().In(s.location)
+	state, err := s.load(ctx, scope, now)
+	if err != nil {
+		return nil, err
+	}
+	items := s.candidates(profile, state.History, now)
+	var result []OptionSnapshot
+	for len(items) > 0 && len(result) < 5 {
+		selected, err := Pick(items, s.randomFloat())
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, snapshot(selected))
+		for i, item := range items {
+			if item.Option.ID == selected.ID {
+				items = append(items[:i], items[i+1:]...)
+				break
+			}
+		}
+	}
+	return result, nil
 }
 
 func (s *Service) updateProfile(ctx context.Context, scope Scope, update func(*Profile)) (Profile, error) {

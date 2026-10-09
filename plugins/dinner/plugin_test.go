@@ -120,7 +120,7 @@ func (r *failedReply) Send(context.Context) error { return r.err }
 
 func TestRecommendationsAndReplyFailure(t *testing.T) {
 	_, h := setupPlugin(t, []any{map[string]any{"id": "a", "name": "A", "enabled": true}, map[string]any{"id": "b", "name": "B", "enabled": true}})
-	e := &bot.Event{Platform: "mock", BotID: "bot", Sender: &bot.User{ID: "u"}, Command: &bot.Command{Name: "dinner"}}
+	e := &bot.Event{Platform: "mock", BotID: "bot", Sender: &bot.User{ID: "u"}, Command: &bot.Command{Name: "dinner", Args: []string{"推荐"}}}
 	failure := errors.New("send failure")
 	underlying := bot.NewNoopReply()
 	r := &failedReply{Reply: underlying, err: failure}
@@ -137,7 +137,7 @@ func TestRecommendationsAndReplyFailure(t *testing.T) {
 			t.Fatalf("different personal result: %s", reply.PlainText())
 		}
 	}
-	first := invoke(t, h, e.Sender)
+	first := invoke(t, h, e.Sender, "推荐")
 	other := invoke(t, h, e.Sender, "换一个")
 	if first == other {
 		t.Fatal("reroll repeated")
@@ -170,10 +170,10 @@ func TestHandlerStorageFailureDoesNotReplySuccess(t *testing.T) {
 func TestMealCommands(t *testing.T) {
 	_, h := setupPlugin(t, []any{map[string]any{"id": "a", "name": "A", "enabled": true}})
 	u := &bot.User{ID: "meal"}
-	if text := invoke(t, h, u, "已吃"); !strings.Contains(text, "还没有推荐") {
+	if text := invoke(t, h, u, "已吃"); !strings.Contains(text, "还没有个人推荐") {
 		t.Fatal(text)
 	}
-	invoke(t, h, u)
+	invoke(t, h, u, "推荐")
 	if text := invoke(t, h, u, "历史"); !strings.Contains(text, "暂无") {
 		t.Fatal(text)
 	}
@@ -187,7 +187,7 @@ func TestMealCommands(t *testing.T) {
 	if text := invoke(t, h, u, "换一个"); !strings.Contains(text, "已吃") {
 		t.Fatal(text)
 	}
-	if text := invoke(t, h, u); !strings.Contains(text, "已吃") {
+	if text := invoke(t, h, u, "推荐"); !strings.Contains(text, "已吃") {
 		t.Fatal(text)
 	}
 }
@@ -214,7 +214,7 @@ func TestPreferenceCommandsAndInvalidInput(t *testing.T) {
 	if text := invoke(t, h, u, "帮助"); !strings.Contains(text, "当前预算：不限") || !strings.Contains(text, "当前忌口：无") {
 		t.Fatal(text)
 	}
-	if text := invoke(t, h, u, "预算", "18.00"); !strings.Contains(text, "当前预算：18.00 元") {
+	if text := invoke(t, h, u, "18.00"); !strings.Contains(text, "当前预算：18.00 元") {
 		t.Fatal(text)
 	}
 	if text := invoke(t, h, u); !strings.Contains(text, "[a]") {
@@ -228,14 +228,15 @@ func TestPreferenceCommandsAndInvalidInput(t *testing.T) {
 	}
 	invoke(t, h, u, "忌口", "清空")
 	invoke(t, h, u)
-	personal := decision.Scope{Platform: "mock", BotID: "bot", UserID: u.ID}
-	before, err := p.service.Profile(context.Background(), personal)
+	personal := decision.PollScope{Platform: "mock", BotID: "bot", Kind: "private", ID: u.ID}
+	before, err := p.polls.Profile(context.Background(), personal)
 	if err != nil {
 		t.Fatal(err)
 	}
 	first := invoke(t, h, u)
 	for _, args := range [][]string{
-		{"预算"}, {"预算", "0"}, {"预算", "-1"}, {"预算", "text"}, {"预算", "1.001"}, {"预算", "18", "extra"},
+		{"预算"}, {"预算", "25"}, {"0"}, {"-1"}, {"text"}, {"1.001"}, {"18", "extra"},
+		{"投票"}, {"投票", "0"}, {"投票", "-1"}, {"投票", "1.1"}, {"投票", "+1"}, {"投票", "1", "extra"},
 		{"忌口"}, {"忌口", " "}, {"已吃", "extra"}, {"换一个", "extra"}, {"历史", "extra"}, {"帮助", "extra"}, {"unknown"},
 	} {
 		if text := invoke(t, h, u, args...); !strings.Contains(text, "晚饭插件用法") {
@@ -245,14 +246,15 @@ func TestPreferenceCommandsAndInvalidInput(t *testing.T) {
 			t.Fatalf("invalid %v changed recommendation: %q", args, got)
 		}
 	}
-	after, err := p.service.Profile(context.Background(), personal)
+	after, err := p.polls.Profile(context.Background(), personal)
 	if err != nil || after.BudgetCents != before.BudgetCents || len(after.ExcludedTags) != 0 {
 		t.Fatalf("invalid input changed profile: %+v %v", after, err)
 	}
+	invoke(t, h, u, "推荐")
 	invoke(t, h, u, "已吃")
-	invoke(t, h, u, "预算", "不限")
+	invoke(t, h, u, "不限")
 	invoke(t, h, u, "忌口", "牛肉")
-	if text := invoke(t, h, u); !strings.Contains(text, "已吃") || !strings.Contains(text, "[a]") {
+	if text := invoke(t, h, u, "推荐"); !strings.Contains(text, "已吃") || !strings.Contains(text, "[a]") {
 		t.Fatal(text)
 	}
 	if text := invoke(t, h, u, "帮助"); !strings.Contains(text, "当前预算：不限") || !strings.Contains(text, "当前忌口：牛肉") {
@@ -268,9 +270,10 @@ func TestPreferenceHandlerStorageAndSendFailures(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	p.polls = decision.NewPollService(p.service, state.New(storage))
 	failure := errors.New("storage failure")
 	u := &bot.User{ID: "pref"}
-	for _, args := range [][]string{{"预算", "18.00"}, {"忌口", "牛肉"}, {"帮助"}} {
+	for _, args := range [][]string{{"18.00"}, {"忌口", "牛肉"}, {"帮助"}} {
 		storage.getErr = failure
 		r := bot.NewNoopReply()
 		e := &bot.Event{Platform: "mock", BotID: "bot", Sender: u, Command: &bot.Command{Name: "dinner", Args: args}}
@@ -289,9 +292,9 @@ func TestPreferenceHandlerStorageAndSendFailures(t *testing.T) {
 	}
 	// Invalid input returns usage without attempting to read or write personal state.
 	storage.getErr, storage.setErr = failure, failure
-	invoke(t, h, u, "预算", "1.001")
+	invoke(t, h, u, "1.001")
 	storage.getErr, storage.setErr = nil, nil
-	e := &bot.Event{Platform: "mock", BotID: "bot", Sender: u, Command: &bot.Command{Name: "dinner", Args: []string{"预算", "18.00"}}}
+	e := &bot.Event{Platform: "mock", BotID: "bot", Sender: u, Command: &bot.Command{Name: "dinner", Args: []string{"18.00"}}}
 	r := &failedReply{Reply: bot.NewNoopReply(), err: errors.New("send failure")}
 	if err := h(context.Background(), e, r); !errors.Is(err, r.err) {
 		t.Fatal(err)
@@ -300,7 +303,7 @@ func TestPreferenceHandlerStorageAndSendFailures(t *testing.T) {
 		t.Fatalf("saved preference lost after failed send: %s", text)
 	}
 	for _, data := range storage.values {
-		var saved decision.UserState
+		var saved decision.PollState
 		if err := json.Unmarshal(data, &saved); err != nil || saved.Profile.BudgetCents != 1800 {
 			t.Fatalf("saved state = %+v %v", saved, err)
 		}

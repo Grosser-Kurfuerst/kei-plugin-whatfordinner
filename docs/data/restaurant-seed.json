@@ -1,0 +1,362 @@
+{
+  "collected_on": "2026-10-10",
+  "source": "360地图原候选与用户指定南京门店增补（各新增项注明来源）",
+  "ranking_url": "https://m.map.360.cn/m/search/ranking/rt=rate&cityid=320106&cat_new_name=%E9%A4%90%E9%A6%86&cityname=%E9%BC%93%E6%A5%BC%E5%8C%BA",
+  "center": {
+    "name": "南京大学(鼓楼校区)",
+    "address": "南京市鼓楼区汉口路22号",
+    "longitude": 118.77961,
+    "latitude": 32.05514,
+    "source_url": "https://m.map.360.cn/?pid=7cbc8533cab4f9a0&src=onebox"
+  },
+  "distance_method": "原360地图条目使用同一地图坐标计算Haversine直线距离；新增项保留地址与来源坐标，未核验统一坐标系的精确距离记null。",
+  "restaurants": [
+    {
+      "id": "nanjing-dapaidang-zifeng",
+      "name": "南京大牌档(紫峰店)",
+      "venue": "南京市鼓楼区中山北路6号紫峰购物中心5楼A03",
+      "source_poi_id": "b3bb0f61764c8b6b",
+      "longitude": 118.783179,
+      "latitude": 32.061171,
+      "distance_km": 0.75,
+      "reference_price_yuan": 73,
+      "tags": []
+    },
+    {
+      "id": "bopeye",
+      "name": "Bopeye 80'波派炸鸡&啤酒",
+      "venue": "南京市鼓楼区管家桥九号余斯达广场二楼",
+      "source_poi_id": "3cec9c4b2e911015",
+      "longitude": 118.78166,
+      "latitude": 32.04289,
+      "distance_km": 1.376,
+      "reference_price_yuan": 70,
+      "tags": [
+        "外国餐厅",
+        "韩国料理"
+      ]
+    },
+    {
+      "id": "benjia",
+      "name": "本家韩国料理(南京店)",
+      "venue": "南京市鼓楼区汉中路108号金轮大厦B1楼",
+      "source_poi_id": "111baecae23c5f6e",
+      "longitude": 118.778372,
+      "latitude": 32.042483,
+      "distance_km": 1.412,
+      "reference_price_yuan": 143,
+      "tags": [
+        "外国菜",
+        "本家韩国料理"
+      ]
+    },
+    {
+      "id": "fuxiaojie-wuyue",
+      "name": "付小姐在成都(吾悦广场店)",
+      "venue": "南京市鼓楼区湖北路51号吾悦广场负一层B1015(星巴克入口处楼下)",
+      "source_poi_id": "f232f1e88b4acb87",
+      "longitude": 118.777188,
+      "latitude": 32.066769,
+      "distance_km": 1.313,
+      "reference_price_yuan": 75,
+      "tags": [
+        "中餐厅",
+        "四川菜(川菜)"
+      ]
+    },
+    {
+      "id": "chengdu-wawa",
+      "name": "成都娃娃花园餐厅 Garden Restaurant & Lounge",
+      "venue": "南京市鼓楼区上海路南秀村18号爱尔兰吧对面",
+      "source_poi_id": "0e3a308397029b5c",
+      "longitude": 118.774882,
+      "latitude": 32.055712,
+      "distance_km": 0.45,
+      "reference_price_yuan": 117,
+      "tags": [
+        "中餐厅",
+        "四川菜(川菜)"
+      ]
+    },
+    {
+      "id": "jiangnanli-wuyue",
+      "name": "江南里(吾悦广场店)",
+      "venue": "南京市鼓楼区湖北路51号吾悦广场5层",
+      "source_poi_id": "f8338e61e6e875cb",
+      "longitude": 118.77686339728,
+      "latitude": 32.067365931605,
+      "distance_km": 1.384,
+      "reference_price_yuan": 80,
+      "tags": [
+        "中餐厅",
+        "浙江菜"
+      ]
+    },
+    {
+      "id": "shenye-shitang",
+      "name": "深夜屋里食堂-深夜食堂",
+      "venue": "南京市鼓楼区中山北路215号中商万豪大楼102室(近温莎KTV)",
+      "source_poi_id": "5f0bb4b2cfbd205c",
+      "longitude": 118.77039,
+      "latitude": 32.070172,
+      "distance_km": 1.884,
+      "reference_price_yuan": 129,
+      "tags": [
+        "外国餐厅"
+      ]
+    },
+    {
+      "id": "huaqianzui",
+      "name": "花千醉小酒馆(金茂汇店)",
+      "venue": "南京市鼓楼区中央路201号金茂汇F7",
+      "source_poi_id": "3e41551d7c0904eb",
+      "longitude": 118.783504,
+      "latitude": 32.072158,
+      "distance_km": 1.928,
+      "reference_price_yuan": 84,
+      "tags": [
+        "中餐厅"
+      ]
+    },
+    {
+      "id": "haidilao-longjiang",
+      "name": "海底捞火锅",
+      "venue": "南京市鼓楼区龙园西路58号黄河大厦2楼",
+      "source_poi_id": "57e1afad530c8451",
+      "longitude": 118.742728,
+      "latitude": 32.057254,
+      "distance_km": 3.484,
+      "reference_price_yuan": 139,
+      "tags": [
+        "海底捞",
+        "中餐",
+        "火锅"
+      ]
+    },
+    {
+      "id": "jinjiamen-longjiang",
+      "name": "晋家门",
+      "venue": "南京市鼓楼区草场门大街99号新城市广场4楼",
+      "source_poi_id": "9fd51bfacc21025f",
+      "longitude": 118.741183,
+      "latitude": 32.056796,
+      "distance_km": 3.626,
+      "reference_price_yuan": 70,
+      "tags": [
+        "中餐厅",
+        "西北菜"
+      ]
+    },
+    {
+      "id": "huawei-longjiang",
+      "name": "花味烤肉",
+      "venue": "南京市鼓楼区龙江新城市广场B1楼",
+      "source_poi_id": "1066c2b1910f9cd0",
+      "longitude": 118.74099,
+      "latitude": 32.0557,
+      "distance_km": 3.64,
+      "reference_price_yuan": 76,
+      "tags": [
+        "外国餐厅",
+        "韩国料理"
+      ]
+    },
+    {
+      "id": "liulang-paopao-wuyue",
+      "name": "流浪泡泡·自助烤肉(鼓楼吾悦广场店)",
+      "venue": "南京市鼓楼区湖北路51号吾悦广场（楼层待核验）",
+      "reference_price_yuan": null,
+      "tags": [
+        "烤肉",
+        "自助餐"
+      ],
+      "source_urls": [
+        "https://dynamic.m.tuniu.com/restaurant/9924731/",
+        "https://mt.sohu.com/kindfeed/chihe/20251125/14"
+      ],
+      "source_note": "吾悦门店由用户指定；公开途牛附近门店和品牌开业索引支持该门店，未取得可核实的人均。",
+      "radius_note": "沿用已核验的鼓楼吾悦广场商场位置；参考点为原江南里吾悦店，距校区1.384km，不是本店精确距离。",
+      "longitude": null,
+      "latitude": null,
+      "distance_km": null,
+      "collected_on": "2026-10-10",
+      "enabled": true
+    },
+    {
+      "id": "longge-zhongyang",
+      "name": "龍歌自助小火锅(南京中央商场店)",
+      "venue": "南京市秦淮区中山南路7号中央商场（楼层待核验）",
+      "reference_price_yuan": 58,
+      "tags": [
+        "火锅",
+        "自助餐"
+      ],
+      "source_urls": [
+        "http://m.dianping.com/shop/1848258034?msource=applemaps"
+      ],
+      "price_source": "大众点评页面的Google索引摘要：¥58/人；门店详情返回验证码，未现场核验菜单。",
+      "radius_note": "公开门店定位为南京新街口中央商场；未取得本店精确坐标。",
+      "longitude": null,
+      "latitude": null,
+      "distance_km": null,
+      "collected_on": "2026-10-10",
+      "enabled": true
+    },
+    {
+      "id": "huanle-matai",
+      "name": "欢乐牧场自助餐厅(马台街店)",
+      "venue": "南京市鼓楼区马台街99号BHG食品超市4楼",
+      "reference_price_yuan": null,
+      "tags": [
+        "自助餐"
+      ],
+      "source_urls": [
+        "https://baike.baidu.com/item/欢乐牧场时尚自助中西餐厅（马台街店）/14224906"
+      ],
+      "source_note": "公开百科确认门店地址；价格资料包含历史60元及不同时段60–120元区间，未取得当前晚餐人均，配置留空。",
+      "radius_note": "马台街地址在鼓楼校区附近；未取得本店精确坐标。",
+      "longitude": null,
+      "latitude": null,
+      "distance_km": null,
+      "collected_on": "2026-10-10",
+      "enabled": true
+    },
+    {
+      "id": "wuliao-aishang",
+      "name": "無燎鲜货火锅自助(艾尚天地店)",
+      "venue": "南京市玄武区中山路100号艾尚天地A座（楼层待核验）",
+      "reference_price_yuan": null,
+      "tags": [
+        "火锅",
+        "自助餐"
+      ],
+      "source_urls": [
+        "https://www.douyin.com/video/7684307929885556874",
+        "https://www.huaxiadasha.cn/",
+        "https://m.map.360.cn/m/search/detail/pid=fcaafacd43ec750b"
+      ],
+      "source_note": "公开门店视频与华夏大厦附近餐厅列表支持艾尚天地A座店；未用其他分店价格或不含锅底的促销券替代本店人均。",
+      "radius_note": "艾尚天地A座位于新街口与珠江路之间；本店精确坐标待核验。",
+      "longitude": null,
+      "latitude": null,
+      "distance_km": null,
+      "collected_on": "2026-10-10",
+      "enabled": true
+    },
+    {
+      "id": "big-wuyue",
+      "name": "比格比萨自助(南京鼓楼吾悦店)",
+      "venue": "南京市鼓楼区湖北路51号吾悦广场（楼层待核验）",
+      "reference_price_yuan": 68,
+      "tags": [
+        "披萨",
+        "自助餐"
+      ],
+      "source_urls": [
+        "http://m.dianping.com/shop/1521125092?msource=applemaps",
+        "https://dynamic.m.tuniu.com/restaurant/10190883/"
+      ],
+      "price_source": "用户指定吾悦广场店；该门店的大众点评Google索引摘要显示¥68/人，未现场核验菜单。",
+      "radius_note": "沿用已核验的鼓楼吾悦广场商场位置；参考点为原江南里吾悦店，距校区1.384km，不是本店精确距离。",
+      "longitude": null,
+      "latitude": null,
+      "distance_km": null,
+      "collected_on": "2026-10-10",
+      "enabled": true
+    },
+    {
+      "id": "la-mia-casa-shanghailu",
+      "name": "La Mia Casa漫味意式小馆(上海路店)",
+      "venue": "南京市鼓楼区上海路南秀村14-1号",
+      "reference_price_yuan": 122,
+      "tags": [
+        "西餐",
+        "意大利菜"
+      ],
+      "source_urls": [
+        "https://m.nj.bendibao.com/xiuxian/170613.shtm",
+        "https://www.amap.com/place/B0FFJ4JWV2"
+      ],
+      "price_source": "南京本地宝情人节餐厅推荐原文：价格122/人，地址上海路南秀村14-1号；属于参考价格。",
+      "longitude": 118.775394,
+      "latitude": 32.055769,
+      "coordinate_source": "高德公开POI（GCJ02）",
+      "radius_note": "南秀村位于鼓楼校区西侧；高德坐标仅保留来源值，不与坐标系未注明的360中心混算精确距离。",
+      "distance_km": null,
+      "collected_on": "2026-10-10",
+      "enabled": true
+    },
+    {
+      "id": "baichuan-qingdaolu",
+      "name": "摆川饭堂·豆花饭·坝坝席(南大青岛路店)",
+      "venue": "南京市鼓楼区青岛路（门牌待核验）",
+      "reference_price_yuan": 54,
+      "tags": [
+        "川菜"
+      ],
+      "source_urls": [
+        "https://m.dianping.com/dishes/list/c5d10059077?notitlebar=1",
+        "https://dynamic.m.tuniu.com/restaurant/7729102/"
+      ],
+      "price_source": "现场读取大众点评南京回锅肉菜品榜：本店¥54/人；搜索索引的52元不采用。",
+      "radius_note": "来源明确南大青岛路店，位于鼓楼校区旁；本店精确坐标待核验。",
+      "longitude": null,
+      "latitude": null,
+      "distance_km": null,
+      "collected_on": "2026-10-10",
+      "enabled": true
+    },
+    {
+      "id": "yibin-qingdaolu",
+      "name": "肖记四川宜宾燃面(青岛路店)",
+      "venue": "南京市鼓楼区汉口西路158号（近山阴路，携程公开地址）",
+      "reference_price_yuan": 25,
+      "tags": [
+        "面食"
+      ],
+      "source_urls": [
+        "https://hk.trip.com/restaurant/china/nanjing/detail/yi-bin-ran-mian-han-kou-xi-lu-dian-26146980/?curr=CNY"
+      ],
+      "price_source": "将公开携程页面切为CNY后，实际渲染餐厅主体显示¥25；不采用HKD页面价格或SSR中26元的未同步值。",
+      "longitude": 118.7778729,
+      "latitude": 32.0540047,
+      "coordinate_source": "携程公开poiData.gdlon/gdlat",
+      "radius_note": "页面名称为青岛路店、地址为汉口西路158号，存在历史门店信息差异；原始坐标保留，不混算精确距离。",
+      "distance_km": null,
+      "collected_on": "2026-10-10",
+      "enabled": true
+    }
+  ],
+  "removed_over_150_yuan": [
+    {
+      "id": "shuilinjian-zifeng",
+      "name": "水林间(紫峰店)",
+      "reference_price_yuan": 216.0
+    },
+    {
+      "id": "haishawan",
+      "name": "海鲨湾海鲜会馆(新街口店)",
+      "reference_price_yuan": 250.0
+    },
+    {
+      "id": "jiangnanzao",
+      "name": "香格里拉大酒店·江南灶中餐厅",
+      "reference_price_yuan": 277.0
+    },
+    {
+      "id": "tengyuan-buer",
+      "name": "藤原布二日式料理",
+      "reference_price_yuan": 174.0
+    },
+    {
+      "id": "xidi-longjiang",
+      "name": "西堤厚牛排",
+      "reference_price_yuan": 154.0
+    },
+    {
+      "id": "meiyuan-jinling",
+      "name": "梅苑餐厅",
+      "reference_price_yuan": 342.0
+    }
+  ]
+}
