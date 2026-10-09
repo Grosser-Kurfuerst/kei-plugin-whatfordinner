@@ -2,16 +2,19 @@ package dinner
 
 import (
 	"context"
+	"errors"
 	"github.com/RandomLemon/kei/pkg/bot"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 func setupPlugin(t *testing.T, items []any) (*Plugin, bot.Handler) {
 	t.Helper()
 	p := &Plugin{}
 	reg := bot.NewRecordingRegistrar()
-	ctx := bot.WithPluginContext(context.Background(), bot.PluginContext{Config: bot.NewConfig(map[string]any{"catalog": map[string]any{"items": items}})})
+	ctx := bot.WithPluginContext(context.Background(), bot.PluginContext{Storage: &testStorage{values: make(map[string][]byte)}, Config: bot.NewConfig(map[string]any{"catalog": map[string]any{"items": items}})})
 	if err := p.Setup(ctx, reg); err != nil {
 		t.Fatal(err)
 	}
@@ -25,7 +28,7 @@ func setupPlugin(t *testing.T, items []any) (*Plugin, bot.Handler) {
 func invoke(t *testing.T, h bot.Handler, sender *bot.User, args ...string) string {
 	t.Helper()
 	r := bot.NewNoopReply()
-	e := &bot.Event{Sender: sender, Command: &bot.Command{Name: "dinner", Args: args}}
+	e := &bot.Event{Platform: "mock", BotID: "bot", Sender: sender, Command: &bot.Command{Name: "dinner", Args: args}}
 	if err := h(context.Background(), e, r); err != nil {
 		t.Fatal(err)
 	}
@@ -35,7 +38,7 @@ func invoke(t *testing.T, h bot.Handler, sender *bot.User, args ...string) strin
 func TestCommands(t *testing.T) {
 	_, h := setupPlugin(t, []any{map[string]any{"id": "a", "name": "牛肉面", "enabled": false, "price_cents": 1800}, map[string]any{"id": "b", "name": "B", "enabled": true}})
 	u := &bot.User{ID: "u1"}
-	for _, args := range [][]string{nil, {"帮助"}, {"unknown"}, {"候选", "extra"}} {
+	for _, args := range [][]string{{"帮助"}, {"unknown"}, {"候选", "extra"}} {
 		if text := invoke(t, h, u, args...); !strings.Contains(text, "/dinner 帮助") {
 			t.Fatalf("help = %q", text)
 		}
@@ -67,5 +70,96 @@ func TestEmptyCatalogAndInvalidSetup(t *testing.T) {
 	ctx := bot.WithPluginContext(context.Background(), bot.PluginContext{Config: bot.NewConfig(map[string]any{"catalog": map[string]any{"items": []any{map[string]any{"id": "a"}}}})})
 	if err := p.Setup(ctx, reg); err == nil {
 		t.Fatal("expected invalid catalog")
+	}
+}
+
+type testStorage struct {
+	mu             sync.Mutex
+	values         map[string][]byte
+	getErr, setErr error
+}
+
+func (s *testStorage) Get(_ context.Context, key string) ([]byte, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.getErr != nil {
+		return nil, s.getErr
+	}
+	v, ok := s.values[key]
+	if !ok {
+		return nil, bot.ErrNotFound
+	}
+	return append([]byte(nil), v...), nil
+}
+func (s *testStorage) Set(_ context.Context, key string, v []byte, _ time.Duration) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.setErr != nil {
+		return s.setErr
+	}
+	s.values[key] = append([]byte(nil), v...)
+	return nil
+}
+func (s *testStorage) Delete(_ context.Context, key string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.values, key)
+	return nil
+}
+
+type failedReply struct {
+	bot.Reply
+	err error
+}
+
+func (r *failedReply) Text(text string) bot.Reply { r.Reply.Text(text); return r }
+func (r *failedReply) Send(context.Context) error { return r.err }
+
+func TestRecommendationsAndReplyFailure(t *testing.T) {
+	_, h := setupPlugin(t, []any{map[string]any{"id": "a", "name": "A", "enabled": true}, map[string]any{"id": "b", "name": "B", "enabled": true}})
+	e := &bot.Event{Platform: "mock", BotID: "bot", Sender: &bot.User{ID: "u"}, Command: &bot.Command{Name: "dinner"}}
+	failure := errors.New("send failure")
+	underlying := bot.NewNoopReply()
+	r := &failedReply{Reply: underlying, err: failure}
+	if err := h(context.Background(), e, r); !errors.Is(err, failure) {
+		t.Fatal(err)
+	}
+	for _, group := range []string{"g1", "g2", ""} {
+		e.Channel = &bot.Channel{ID: group}
+		reply := bot.NewNoopReply()
+		if err := h(context.Background(), e, reply); err != nil {
+			t.Fatal(err)
+		}
+		if reply.PlainText() != underlying.PlainText() {
+			t.Fatalf("different personal result: %s", reply.PlainText())
+		}
+	}
+	first := invoke(t, h, e.Sender)
+	other := invoke(t, h, e.Sender, "换一个")
+	if first == other {
+		t.Fatal("reroll repeated")
+	}
+	if text := invoke(t, h, e.Sender, "换一个"); !strings.Contains(text, "选完") {
+		t.Fatal(text)
+	}
+}
+
+func TestHandlerStorageFailureDoesNotReplySuccess(t *testing.T) {
+	p := &Plugin{}
+	reg := bot.NewRecordingRegistrar()
+	failure := errors.New("storage failure")
+	storage := &testStorage{values: map[string][]byte{}, setErr: failure}
+	ctx := bot.WithPluginContext(context.Background(), bot.PluginContext{Storage: storage, Config: bot.NewConfig(map[string]any{"catalog": map[string]any{"items": []any{map[string]any{"id": "a", "name": "A", "enabled": true}}}})})
+	if err := p.Setup(ctx, reg); err != nil {
+		t.Fatal(err)
+	}
+	rule, _ := reg.Command("dinner")
+	r := bot.NewNoopReply()
+	e := &bot.Event{Platform: "mock", BotID: "bot", Sender: &bot.User{ID: "u"}, Command: &bot.Command{Name: "dinner"}}
+	if err := rule.Handler(context.Background(), e, r); !errors.Is(err, failure) {
+		t.Fatal(err)
+	}
+	if r.PlainText() != "" {
+		t.Fatalf("false success: %s", r.PlainText())
 	}
 }

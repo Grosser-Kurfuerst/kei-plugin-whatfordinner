@@ -3,13 +3,21 @@ package dinner
 
 import (
 	"context"
-	"example.com/whatfordinner/internal/catalog"
 	"fmt"
+	"math/rand/v2"
+	"time"
+
+	"example.com/whatfordinner/internal/catalog"
+	"example.com/whatfordinner/internal/decision"
+	"example.com/whatfordinner/internal/state"
 	"github.com/RandomLemon/kei/pkg/bot"
 )
 
 // Plugin 是独立的晚饭插件实例。
-type Plugin struct{ catalog *catalog.Catalog }
+type Plugin struct {
+	catalog *catalog.Catalog
+	service *decision.Service
+}
 
 var _ bot.Plugin = (*Plugin)(nil)
 
@@ -37,6 +45,14 @@ func (p *Plugin) Setup(ctx context.Context, reg bot.Registrar) error {
 		return err
 	}
 	p.catalog = c
+	if pc.Storage == nil {
+		return fmt.Errorf("dinner: missing storage")
+	}
+	service, err := decision.New(c, state.New(pc.Storage), time.Now, rand.Float64)
+	if err != nil {
+		return fmt.Errorf("dinner service: %w", err)
+	}
+	p.service = service
 	reg.OnCommand("dinner", p.handle, bot.WithID("dinner:command"))
 	return nil
 }

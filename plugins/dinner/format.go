@@ -2,12 +2,22 @@ package dinner
 
 import (
 	"example.com/whatfordinner/internal/catalog"
+	"example.com/whatfordinner/internal/decision"
 	"fmt"
 	"strings"
 )
 
 func helpText() string {
-	return "晚饭插件用法：\n/dinner 候选：查看共享清单\n/dinner 帮助：查看用法"
+	return "晚饭插件用法：\n/dinner：查看今晚推荐\n/dinner 换一个：换一个候选\n/dinner 候选：查看共享清单\n/dinner 帮助：查看用法"
+}
+
+func formatRecommendation(result decision.Recommendation) string {
+	option := result.Option
+	text := fmt.Sprintf("今晚推荐：%s [%s]", option.Name, option.ID)
+	if option.Venue != "" {
+		text += "\n地点：" + option.Venue
+	}
+	return text + "\n" + money(option.PriceCents)
 }
 
 func money(cents *int64) string {
