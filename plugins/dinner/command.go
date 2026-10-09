@@ -21,17 +21,26 @@ func (p *Plugin) handle(ctx context.Context, e *bot.Event, r bot.Reply) error {
 		return r.Text(formatCatalog(p.catalog.List())).Send(ctx)
 	}
 	scope := decision.Scope{Platform: e.Platform, BotID: e.BotID, UserID: e.Sender.ID}
+	if len(args) == 1 && args[0] == "历史" {
+		history, err := p.service.History(ctx, scope)
+		if err != nil {
+			return err
+		}
+		return r.Text(formatHistory(history)).Send(ctx)
+	}
 	var result decision.Recommendation
 	var err error
 	if len(args) == 0 {
 		result, err = p.service.Recommend(ctx, scope)
 	} else if len(args) == 1 && args[0] == "换一个" {
 		result, err = p.service.Reroll(ctx, scope)
+	} else if len(args) == 1 && args[0] == "已吃" {
+		result, err = p.service.MarkEaten(ctx, scope)
 	} else {
 		return r.Text(helpText()).Send(ctx)
 	}
 	if err != nil {
-		if errors.Is(err, decision.ErrNoCandidates) || errors.Is(err, decision.ErrRoundExhausted) || errors.Is(err, decision.ErrCurrentUnavailable) {
+		if errors.Is(err, decision.ErrNoCandidates) || errors.Is(err, decision.ErrRoundExhausted) || errors.Is(err, decision.ErrCurrentUnavailable) || errors.Is(err, decision.ErrNoCurrent) || errors.Is(err, decision.ErrAlreadyEaten) {
 			return r.Text(err.Error()).Send(ctx)
 		}
 		return err

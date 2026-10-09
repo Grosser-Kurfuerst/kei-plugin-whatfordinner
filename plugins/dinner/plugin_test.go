@@ -163,3 +163,28 @@ func TestHandlerStorageFailureDoesNotReplySuccess(t *testing.T) {
 		t.Fatalf("false success: %s", r.PlainText())
 	}
 }
+
+func TestMealCommands(t *testing.T) {
+	_, h := setupPlugin(t, []any{map[string]any{"id": "a", "name": "A", "enabled": true}})
+	u := &bot.User{ID: "meal"}
+	if text := invoke(t, h, u, "已吃"); !strings.Contains(text, "还没有推荐") {
+		t.Fatal(text)
+	}
+	invoke(t, h, u)
+	if text := invoke(t, h, u, "历史"); !strings.Contains(text, "暂无") {
+		t.Fatal(text)
+	}
+	if text := invoke(t, h, u, "已吃"); !strings.Contains(text, "已吃并记录") {
+		t.Fatal(text)
+	}
+	invoke(t, h, u, "已吃")
+	if text := invoke(t, h, u, "历史"); strings.Count(text, "[a]") != 1 {
+		t.Fatal(text)
+	}
+	if text := invoke(t, h, u, "换一个"); !strings.Contains(text, "已吃") {
+		t.Fatal(text)
+	}
+	if text := invoke(t, h, u); !strings.Contains(text, "已吃") {
+		t.Fatal(text)
+	}
+}

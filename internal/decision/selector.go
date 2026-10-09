@@ -3,9 +3,25 @@ package decision
 import (
 	"fmt"
 	"math"
+	"time"
 
 	"example.com/whatfordinner/internal/catalog"
 )
+
+// Weight 仅使用此前七个本地日历日的已吃记录，返回权重和次数。
+func Weight(id string, history []MealRecord, today time.Time) (float64, int) {
+	penalty, count := 0, 0
+	for d := 1; d <= 7; d++ {
+		date := today.AddDate(0, 0, -d).Format(time.DateOnly)
+		for _, record := range history {
+			if record.Option.ID == id && record.Date == date {
+				penalty += 8 - d
+				count++
+			}
+		}
+	}
+	return 1 / float64(1+penalty), count
+}
 
 // WeightedOption 是参与本次抽选的候选及正权重。
 type WeightedOption struct {

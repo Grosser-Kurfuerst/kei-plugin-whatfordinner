@@ -229,3 +229,206 @@ func TestStoreFailureAndCancelledContext(t *testing.T) {
 		t.Fatalf("%+v %v", got, err)
 	}
 }
+
+func TestWeightedServiceUsesOnlyMeals(t *testing.T) {
+	now := time.Date(2026, 10, 9, 10, 0, 0, 0, time.UTC)
+	store := newTestStore()
+	s := service(t, options(), store, &now)
+	ctx := context.Background()
+	if _, err := s.Recommend(ctx, scope); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Reroll(ctx, scope); err != nil {
+		t.Fatal(err)
+	}
+	state, _ := store.Load(ctx, scope)
+	if len(state.History) != 0 {
+		t.Fatal("recommendations became meals")
+	}
+	state.Daily = DailyDecision{}
+	state.History = []MealRecord{{Date: "2026-10-08", Option: OptionSnapshot{ID: "a", Name: "A"}}}
+	if err := store.Save(ctx, scope, state); err != nil {
+		t.Fatal(err)
+	}
+	s.randomFloat = func() float64 { return 0.2 }
+	got, err := s.Recommend(ctx, scope)
+	if err != nil || got.Option.ID != "b" || got.RecentMeals != 0 {
+		t.Fatalf("history not used in selection: %+v %v", got, err)
+	}
+	got, err = s.Reroll(ctx, scope)
+	if err != nil || got.Option.ID != "a" || got.RecentMeals != 1 {
+		t.Fatalf("remaining weight not renormalized: %+v %v", got, err)
+	}
+	state, _ = store.Load(ctx, scope)
+	if len(state.History) != 1 {
+		t.Fatal("reroll became a meal")
+	}
+}
+
+func TestMealRecordingAndSnapshot(t *testing.T) {
+	now := time.Date(2026, 10, 9, 10, 0, 0, 0, time.UTC)
+	store := newTestStore()
+	items := options()
+	price := int64(1800)
+	items[0].PriceCents = &price
+	items[0].Venue = "Old venue"
+	s := service(t, items, store, &now)
+	ctx := context.Background()
+	if _, err := s.MarkEaten(ctx, scope); !errors.Is(err, ErrNoCurrent) {
+		t.Fatal(err)
+	}
+	if _, err := s.Recommend(ctx, scope); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.MarkEaten(ctx, scope)
+	if err != nil || !got.Eaten {
+		t.Fatalf("%+v %v", got, err)
+	}
+	writes := store.writes
+	if _, err := s.MarkEaten(ctx, scope); err != nil {
+		t.Fatal(err)
+	}
+	if store.writes != writes {
+		t.Fatal("duplicate meal save")
+	}
+	history, err := s.History(ctx, scope)
+	if err != nil || len(history) != 1 || history[0].Option.ID != "a" || !history[0].EatenAt.Equal(now) || history[0].EatenAt.Location() != time.UTC {
+		t.Fatalf("%+v %v", history, err)
+	}
+	if _, err := s.Reroll(ctx, scope); !errors.Is(err, ErrAlreadyEaten) {
+		t.Fatal(err)
+	}
+	// Removing all current catalog entries cannot erase an actual meal.
+	s = service(t, nil, store, &now)
+	got, err = s.Recommend(ctx, scope)
+	if err != nil || !got.Eaten || got.Option.Name != "A" || got.Option.Venue != "Old venue" || *got.Option.PriceCents != 1800 {
+		t.Fatalf("lost snapshot: %+v %v", got, err)
+	}
+	now = now.AddDate(0, 0, 1)
+	if _, err := s.MarkEaten(ctx, scope); !errors.Is(err, ErrNoCurrent) {
+		t.Fatal(err)
+	}
+	s = service(t, options(), store, &now)
+	got, err = s.Recommend(ctx, scope)
+	if err != nil || got.Eaten {
+		t.Fatalf("day not reset: %+v %v", got, err)
+	}
+	history, err = s.History(ctx, scope)
+	if err != nil || len(history) != 1 {
+		t.Fatalf("history lost: %+v %v", history, err)
+	}
+}
+
+func TestConcurrentAndFailedMealSave(t *testing.T) {
+	now := time.Now()
+	store := newTestStore()
+	s := service(t, options(), store, &now)
+	ctx := context.Background()
+	if _, err := s.Recommend(ctx, scope); err != nil {
+		t.Fatal(err)
+	}
+	failure := errors.New("failed save")
+	store.saveErr = failure
+	if _, err := s.MarkEaten(ctx, scope); !errors.Is(err, failure) {
+		t.Fatal(err)
+	}
+	state, _ := store.Load(ctx, scope)
+	if state.Daily.Eaten || len(state.History) != 0 {
+		t.Fatal("failed save recorded a meal")
+	}
+	store.saveErr = nil
+	var wg sync.WaitGroup
+	for i := 0; i < 30; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			got, err := s.MarkEaten(ctx, scope)
+			if err != nil || !got.Eaten {
+				t.Errorf("%+v %v", got, err)
+			}
+		}()
+	}
+	wg.Wait()
+	state, _ = store.Load(ctx, scope)
+	if len(state.History) != 1 || store.writes != 2 {
+		t.Fatalf("history=%d writes=%d", len(state.History), store.writes)
+	}
+	store.loadErr = failure
+	if _, err := s.History(ctx, scope); !errors.Is(err, failure) {
+		t.Fatal(err)
+	}
+}
+
+func TestHistoryWindowAndLimit(t *testing.T) {
+	now := time.Date(2026, 10, 9, 10, 0, 0, 0, time.UTC)
+	store := newTestStore()
+	s := service(t, options(), store, &now)
+	ctx := context.Background()
+	local := now.In(s.location)
+	var records []MealRecord
+	for d := 31; d >= 1; d-- {
+		records = append(records, MealRecord{Date: local.AddDate(0, 0, -d).Format(time.DateOnly), Option: OptionSnapshot{ID: "a", Name: "Old A"}})
+	}
+	if err := store.Save(ctx, scope, UserState{History: records}); err != nil {
+		t.Fatal(err)
+	}
+	history, err := s.History(ctx, scope)
+	if err != nil || len(history) != 7 || history[0].Date != "2026-10-08" || history[6].Date != "2026-10-02" {
+		t.Fatalf("%+v %v", history, err)
+	}
+	if _, err := s.Recommend(ctx, scope); err != nil {
+		t.Fatal(err)
+	}
+	state, _ := store.Load(ctx, scope)
+	if len(state.History) != 29 {
+		t.Fatalf("old history retained: %d", len(state.History))
+	}
+	for _, r := range state.History {
+		if r.Date < local.AddDate(0, 0, -29).Format(time.DateOnly) {
+			t.Fatal(r)
+		}
+	}
+	if _, err := s.MarkEaten(ctx, scope); err != nil {
+		t.Fatal(err)
+	}
+	state, _ = store.Load(ctx, scope)
+	if len(state.History) != 30 {
+		t.Fatal(len(state.History))
+	}
+	history, err = s.History(ctx, scope)
+	if err != nil || len(history) != 7 || history[0].Date != "2026-10-09" {
+		t.Fatalf("%+v %v", history, err)
+	}
+}
+
+func TestMarkCurrentValidationAndLatestSnapshot(t *testing.T) {
+	now := time.Now()
+	store := newTestStore()
+	s := service(t, options(), store, &now)
+	ctx := context.Background()
+	if _, err := s.Recommend(ctx, scope); err != nil {
+		t.Fatal(err)
+	}
+	missing := service(t, options()[1:], store, &now)
+	if _, err := missing.MarkEaten(ctx, scope); !errors.Is(err, ErrCurrentUnavailable) {
+		t.Fatal(err)
+	}
+	state, _ := store.Load(ctx, scope)
+	if state.Daily.Eaten || len(state.History) != 0 {
+		t.Fatal("unavailable current was recorded")
+	}
+	changed := options()
+	price := int64(2300)
+	changed[0].Name = "Latest A"
+	changed[0].Venue = "Latest venue"
+	changed[0].PriceCents = &price
+	updated := service(t, changed, store, &now)
+	got, err := updated.MarkEaten(ctx, scope)
+	if err != nil || got.Option.Name != "Latest A" || *got.Option.PriceCents != 2300 {
+		t.Fatalf("%+v %v", got, err)
+	}
+	history, err := updated.History(ctx, scope)
+	if err != nil || history[0].Option.Venue != "Latest venue" || *history[0].Option.PriceCents != 2300 {
+		t.Fatalf("%+v %v", history, err)
+	}
+}

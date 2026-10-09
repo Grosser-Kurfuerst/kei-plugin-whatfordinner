@@ -8,16 +8,43 @@ import (
 )
 
 func helpText() string {
-	return "晚饭插件用法：\n/dinner：查看今晚推荐\n/dinner 换一个：换一个候选\n/dinner 候选：查看共享清单\n/dinner 帮助：查看用法"
+	return "晚饭插件用法：\n/dinner：查看今晚推荐\n/dinner 换一个：换一个候选\n/dinner 已吃：记录今天实际用餐\n/dinner 历史：查看最近已吃记录\n/dinner 候选：查看共享清单\n/dinner 帮助：查看用法"
 }
 
 func formatRecommendation(result decision.Recommendation) string {
 	option := result.Option
 	text := fmt.Sprintf("今晚推荐：%s [%s]", option.Name, option.ID)
+	if result.Eaten {
+		text = fmt.Sprintf("今天已吃并记录：%s [%s]", option.Name, option.ID)
+	}
 	if option.Venue != "" {
 		text += "\n地点：" + option.Venue
 	}
-	return text + "\n" + money(option.PriceCents)
+	text += "\n" + money(option.PriceCents)
+	if !result.Eaten {
+		if result.RecentMeals == 0 {
+			text += "\n最近七天未吃过。"
+		} else {
+			text += fmt.Sprintf("\n此前七天吃过 %d 次，已降低抽选权重。", result.RecentMeals)
+		}
+	}
+	return text
+}
+
+func formatHistory(history []decision.MealRecord) string {
+	if len(history) == 0 {
+		return "暂无已吃历史；推荐和换选不会自动记录用餐。"
+	}
+	var b strings.Builder
+	b.WriteString("最近已吃历史：")
+	for _, record := range history {
+		fmt.Fprintf(&b, "\n%s %s [%s]", record.Date, record.Option.Name, record.Option.ID)
+		if record.Option.Venue != "" {
+			fmt.Fprintf(&b, "，%s", record.Option.Venue)
+		}
+		fmt.Fprintf(&b, "，%s", money(record.Option.PriceCents))
+	}
+	return b.String()
 }
 
 func money(cents *int64) string {

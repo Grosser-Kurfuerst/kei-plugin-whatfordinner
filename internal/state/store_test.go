@@ -94,3 +94,24 @@ func TestStorageErrors(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestStageTwoStateAndMealRoundTrip(t *testing.T) {
+	memory := &memoryStorage{values: map[string][]byte{}}
+	store := New(memory)
+	ctx := context.Background()
+	scope := decision.Scope{Platform: "mock", BotID: "b", UserID: "u"}
+	memory.values[key(scope)] = []byte(`{"daily":{"date":"2026-10-09","current":{"id":"a","name":"A"},"tried_ids":["a"]}}`)
+	value, err := store.Load(ctx, scope)
+	if err != nil || value.Daily.Current.ID != "a" || value.Daily.Eaten || len(value.History) != 0 {
+		t.Fatalf("%+v %v", value, err)
+	}
+	value.Daily.Eaten = true
+	value.History = []decision.MealRecord{{Date: "2026-10-09", Option: *value.Daily.Current, EatenAt: time.Date(2026, 10, 9, 10, 0, 0, 0, time.UTC)}}
+	if err := store.Save(ctx, scope, value); err != nil {
+		t.Fatal(err)
+	}
+	saved, err := store.Load(ctx, scope)
+	if err != nil || !saved.Daily.Eaten || len(saved.History) != 1 || saved.History[0].Option.Name != "A" || !saved.History[0].EatenAt.Equal(value.History[0].EatenAt) {
+		t.Fatalf("%+v %v", saved, err)
+	}
+}

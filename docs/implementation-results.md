@@ -50,3 +50,17 @@
 评审：1 轮，最终 `NO_BLOCKING_ISSUES`；reviewer 独立执行 `go test -race -count=1 ./internal/decision ./internal/state ./plugins/dinner` 通过。无阻塞修复、拒绝 finding 或跳过主流程验证。
 
 提交：`feat(decision): persist daily recommendations and rerolls`。
+
+## 阶段 3：已吃记录与七天减少重复
+
+状态：已完成。前序提交：`f93d808`。
+
+修改文件：决策类型、服务、权重函数及测试，状态存储测试，插件命令、展示和 Handler 测试，以及本文。
+
+实现：显式已吃记录；一次保存快照、历史和已吃状态；幂等记录及已吃后拒绝换选；30 天保留、倒序 7 条查询；只使用此前七天实际用餐的 `1/(1+Σ(8-d))` 权重，复用累计权重抽选。
+
+验证：五项质量检查全部通过；`python3 /tmp/whatfordinner-acceptance.py 3` 通过实际已吃、重复已吃、历史、拒绝换选、SQLite 进程重启、删除或修改候选后的历史快照，以及此前阶段回归。固定测试验证全部权重例值、区间重算、窗口、30 个并发已吃只追加一条、保存失败不产生记录和阶段 2 JSON 正常升级。
+
+评审：1 轮，最终 `NO_BLOCKING_ISSUES`；reviewer 独立运行普通测试及非缓存竞态测试通过。无阻塞修复、拒绝 finding 或跳过主流程验证。
+
+提交：`feat(history): record meals and reduce recent dinner repeats`。
