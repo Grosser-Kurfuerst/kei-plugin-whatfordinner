@@ -1,0 +1,26 @@
+bots:
+  - name: mock-main
+    adapter: mock
+    listen_addr: 127.0.0.1:18080
+
+storage:
+  type: sqlite
+  dsn: ./kei.db
+
+plugins:
+  dinner:
+    enabled: true
+    catalog:
+      items:
+        - id: noodle
+          name: 牛肉面
+          venue: 示例食堂面档
+          price_cents: 1800
+          tags: [面食, 牛肉]
+          enabled: true
+        - id: rice
+          name: 盖浇饭
+          venue: 示例食堂饭档
+          price_cents: 2000
+          tags: [米饭]
+          enabled: true
