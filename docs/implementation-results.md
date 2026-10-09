@@ -64,3 +64,36 @@
 评审：1 轮，最终 `NO_BLOCKING_ISSUES`；reviewer 独立运行普通测试及非缓存竞态测试通过。无阻塞修复、拒绝 finding 或跳过主流程验证。
 
 提交：`feat(history): record meals and reduce recent dinner repeats`。
+
+## 阶段 4：预算、忌口与完整验收
+
+状态：已完成。前序提交：`8bfcc34`。
+
+修改文件：`internal/decision/types.go`、`service.go`、`service_test.go`，`internal/state/store_test.go`，`plugins/dinner/command.go`、`format.go`、`plugin_test.go`，以及本文。
+
+实现：增加个人 Profile，预算默认不限、忌口默认空；推荐、当前项检查和已吃记录共用启用状态／预算／标签条件。预算按十进制字符解析为整数分；忌口替换、去重和清空。未吃时设置偏好清空本轮；已吃时仅更新偏好，保留快照和历史。帮助读取当前设置；无效参数不读写个人状态，无匹配项不自动放宽条件。
+
+验证：五项质量检查全部通过；`python3 /tmp/whatfordinner-acceptance.py 4` 通过全部命令、18.00／17.99 预算边界、忌口替换和清空、非默认预算与忌口的 SQLite 重启恢复、已吃后改偏好、改价与改标签导致当前失效，以及前三阶段仍适用的 Mock 场景。固定测试补齐未知价格、精确标签、上海跨零点后的新条件、偏好并发更新和保存失败、阶段 3 JSON 零值兼容。
+
+评审：1 轮，最终 `NO_BLOCKING_ISSUES`；reviewer 独立运行 `go test -count=1 ./...` 和 `go test -race -count=1 ./internal/decision ./internal/state ./plugins/dinner` 通过，并核对全部验收证据。无阻塞修复、拒绝 finding 或跳过主流程验证。
+
+提交：`feat(preferences): filter dinner choices by budget and excluded tags`。
+
+## 最终验收对应记录
+
+| 验收 | 已通过的证据 |
+|---|---|
+| A1 清单校验与维护 | `TestCatalogValidation`、`TestCatalogChangeAndNoCandidates`；实际配置新增、改名、改价、停用、删除及重复 ID 启动失败 |
+| A2 正常推荐 | `TestDailyDecisionAndReroll`、`TestCommands`；实际 Mock 推荐展示名称、地点与参考价格 |
+| A3 硬条件 | `TestBudgetAndExcludedTagsFilter`；实际预算 18.00／17.99 与牛肉忌口，无匹配项不放宽条件 |
+| A4 稳定与换选 | `TestDailyDecisionAndReroll`、`TestPreferenceChangesRestartRound`；实际普通查询稳定、换选、耗尽和配置失效后的显式换选 |
+| A5 近期降权 | `TestSevenDayWeights` 精确验证 1、1/8、1/6、1/2、1/13，以及当天和八天前不计权 |
+| A6 加权选择 | `TestPickIntervals`、`TestWeightedServiceUsesOnlyMeals` 验证 8/9 边界与排除本轮项后的重新计权 |
+| A7 推荐与已吃分离 | `TestMealRecordingAndSnapshot`、`TestWeightedServiceUsesOnlyMeals`；实际重复已吃只显示一条历史 |
+| A8 已吃后行为 | `TestMealRecordingAndSnapshot`、`TestPreferencesPreserveMealAndSurviveMidnight`；实际拒绝换选、修改偏好及修改清单后仍显示已吃快照 |
+| A9 日期与窗口 | `TestShanghaiDateBoundary`、`TestHistoryWindowAndLimit`、`TestPreferencesPreserveMealAndSurviveMidnight`；固定时钟验证上海零点、保留偏好、7 天计权与 30 天历史 |
+| A10 隔离与并发 | `TestIsolationAndConcurrentRecommend`、`TestConcurrentAndFailedMealSave`、`TestConcurrentPreferenceUpdatesPreserveBothFields`；实际 u1／u2 隔离、g1／g2／私聊共享；竞态检查通过 |
+| A11 重启持久化 | 实际沿用同一 SQLite 路径反复重启，验证当日结果、已吃状态与历史、非默认预算和忌口；状态编解码测试验证旧 JSON 可直接读取 |
+| A12 常见失败 | 服务及 Handler 故障测试验证读写错误不报成功、无效参数不改状态、发送失败后已保存状态可查询；实际改价／改标签超出条件后拒绝推荐和记录已吃 |
+
+业务验收以固定测试断言和实际 `/sent` 回复为准，Mock 注入的 202 响应只代表入队。跨日与概率通过固定时钟、随机值验证，不以等待一天或观察抽签频率代替。

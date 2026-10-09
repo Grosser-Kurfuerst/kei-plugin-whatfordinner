@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"example.com/whatfordinner/internal/catalog"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -430,5 +431,288 @@ func TestMarkCurrentValidationAndLatestSnapshot(t *testing.T) {
 	history, err := updated.History(ctx, scope)
 	if err != nil || history[0].Option.Venue != "Latest venue" || *history[0].Option.PriceCents != 2300 {
 		t.Fatalf("%+v %v", history, err)
+	}
+}
+
+func preferenceOptions() []catalog.Option {
+	a, b := int64(1800), int64(2000)
+	return []catalog.Option{
+		{ID: "a", Name: "牛肉面", PriceCents: &a, Tags: []string{"面食", "牛肉"}, Enabled: true},
+		{ID: "b", Name: "盖浇饭", PriceCents: &b, Tags: []string{"米饭"}, Enabled: true},
+		{ID: "unknown", Name: "未知价格", Enabled: true},
+		{ID: "off", Name: "停用", PriceCents: &a},
+	}
+}
+
+func TestBudgetAndExcludedTagsFilter(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		budget  int64
+		tags    []string
+		unknown bool
+		want    string
+	}{
+		{name: "default", want: "a"},
+		{name: "exact budget", budget: 1800, want: "a"},
+		{name: "one cent short", budget: 1799},
+		{name: "excluded beef", tags: []string{"牛肉"}, want: "b"},
+		{name: "exact tag only", tags: []string{"牛"}, want: "a"},
+		{name: "combined conditions", budget: 2000, tags: []string{"牛肉"}, want: "b"},
+		{name: "no relaxation", budget: 1800, tags: []string{"牛肉"}},
+		{name: "any excluded tag", tags: []string{"面食", "米饭"}, want: "unknown"},
+		{name: "unknown price unlimited", unknown: true, want: "unknown"},
+		{name: "unknown price limited", budget: 10000, unknown: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			now := time.Date(2026, 10, 9, 10, 0, 0, 0, time.UTC)
+			items := preferenceOptions()
+			if tc.unknown {
+				items = items[2:3]
+			}
+			store := newTestStore()
+			s := service(t, items, store, &now)
+			ctx := context.Background()
+			if _, err := s.SetBudget(ctx, scope, tc.budget); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := s.SetExcludedTags(ctx, scope, tc.tags); err != nil {
+				t.Fatal(err)
+			}
+			writes := store.writes
+			got, err := s.Recommend(ctx, scope)
+			if tc.want == "" {
+				if !errors.Is(err, ErrNoCandidates) || store.writes != writes {
+					t.Fatalf("conditions relaxed or state changed: %+v %v", got, err)
+				}
+			} else if err != nil || got.Option.ID != tc.want {
+				t.Fatalf("%+v %v", got, err)
+			}
+		})
+	}
+}
+
+func TestPreferenceChangesRestartRound(t *testing.T) {
+	now := time.Date(2026, 10, 9, 10, 0, 0, 0, time.UTC)
+	store := newTestStore()
+	s := service(t, preferenceOptions()[:2], store, &now)
+	ctx := context.Background()
+	if _, err := s.Recommend(ctx, scope); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Reroll(ctx, scope); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.SetBudget(ctx, scope, 1800); err != nil {
+		t.Fatal(err)
+	}
+	state, _ := store.Load(ctx, scope)
+	if state.Daily.Current != nil || len(state.Daily.TriedIDs) != 0 || state.Daily.Date != "2026-10-09" {
+		t.Fatalf("round not reset: %+v", state)
+	}
+	got, err := s.Recommend(ctx, scope)
+	if err != nil || got.Option.ID != "a" {
+		t.Fatalf("previously tried candidate not restored: %+v %v", got, err)
+	}
+	tags := []string{"牛肉", "牛肉"}
+	profile, err := s.SetExcludedTags(ctx, scope, tags)
+	if err != nil || !reflect.DeepEqual(profile.ExcludedTags, []string{"牛肉"}) {
+		t.Fatalf("%+v %v", profile, err)
+	}
+	tags[0] = "米饭"
+	if _, err := s.Recommend(ctx, scope); !errors.Is(err, ErrNoCandidates) {
+		t.Fatal(err)
+	}
+	if _, err := s.SetBudget(ctx, scope, 0); err != nil {
+		t.Fatal(err)
+	}
+	got, err = s.Recommend(ctx, scope)
+	if err != nil || got.Option.ID != "b" {
+		t.Fatalf("budget not cleared: %+v %v", got, err)
+	}
+	if _, err := s.SetExcludedTags(ctx, scope, []string{"米饭"}); err != nil {
+		t.Fatal(err)
+	}
+	got, err = s.Recommend(ctx, scope)
+	if err != nil || got.Option.ID != "a" {
+		t.Fatalf("tags appended instead of replaced: %+v %v", got, err)
+	}
+	if _, err := s.SetExcludedTags(ctx, scope, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Recommend(ctx, scope); err != nil {
+		t.Fatal(err)
+	}
+	got, err = s.Reroll(ctx, scope)
+	if err != nil || got.Option.ID != "b" {
+		t.Fatalf("excluded candidate not restored: %+v %v", got, err)
+	}
+}
+
+func TestPreferencesPreserveMealAndSurviveMidnight(t *testing.T) {
+	now := time.Date(2026, 10, 9, 15, 59, 0, 0, time.UTC)
+	store := newTestStore()
+	s := service(t, preferenceOptions()[:2], store, &now)
+	ctx := context.Background()
+	if _, err := s.Recommend(ctx, scope); err != nil {
+		t.Fatal(err)
+	}
+	meal, err := s.MarkEaten(ctx, scope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, _ := store.Load(ctx, scope)
+	if _, err := s.SetBudget(ctx, scope, 1800); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.SetExcludedTags(ctx, scope, []string{"牛肉"}); err != nil {
+		t.Fatal(err)
+	}
+	after, _ := store.Load(ctx, scope)
+	if !reflect.DeepEqual(before.Daily, after.Daily) || !reflect.DeepEqual(before.History, after.History) {
+		t.Fatal("preferences erased actual meal")
+	}
+	s = service(t, preferenceOptions()[:2], store, &now)
+	got, err := s.Recommend(ctx, scope)
+	if err != nil || !reflect.DeepEqual(got, meal) {
+		t.Fatalf("lost eaten snapshot: %+v %v", got, err)
+	}
+	u2 := scope
+	u2.UserID = "other"
+	profile, err := s.Profile(ctx, u2)
+	if err != nil || profile.BudgetCents != 0 || len(profile.ExcludedTags) != 0 {
+		t.Fatalf("preferences leaked: %+v %v", profile, err)
+	}
+	now = time.Date(2026, 10, 9, 16, 0, 0, 0, time.UTC)
+	if _, err := s.Recommend(ctx, scope); !errors.Is(err, ErrNoCandidates) {
+		t.Fatal(err)
+	}
+	if _, err := s.SetBudget(ctx, scope, 2000); err != nil {
+		t.Fatal(err)
+	}
+	after, _ = store.Load(ctx, scope)
+	if after.Daily.Date != "2026-10-10" || after.Daily.Current != nil || after.Daily.Eaten || len(after.Daily.TriedIDs) != 0 || len(after.History) != 1 {
+		t.Fatalf("yesterday's eaten status carried into preference update: %+v", after)
+	}
+	got, err = s.Recommend(ctx, scope)
+	if err != nil || got.Option.ID != "b" || got.Eaten {
+		t.Fatalf("new day not using saved preferences: %+v %v", got, err)
+	}
+}
+
+func TestCurrentNoLongerMatchesPreferences(t *testing.T) {
+	for _, change := range []string{"price", "unknown price", "tags"} {
+		t.Run(change, func(t *testing.T) {
+			now := time.Date(2026, 10, 9, 10, 0, 0, 0, time.UTC)
+			store := newTestStore()
+			items := preferenceOptions()[:2]
+			s := service(t, items, store, &now)
+			ctx := context.Background()
+			if _, err := s.SetBudget(ctx, scope, 1800); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := s.SetExcludedTags(ctx, scope, []string{"辣"}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := s.Recommend(ctx, scope); err != nil {
+				t.Fatal(err)
+			}
+			before, _ := store.Load(ctx, scope)
+			switch change {
+			case "price":
+				price := int64(1801)
+				items[0].PriceCents = &price
+			case "unknown price":
+				items[0].PriceCents = nil
+			case "tags":
+				items[0].Tags = []string{"辣"}
+			}
+			s = service(t, items, store, &now)
+			if _, err := s.Recommend(ctx, scope); !errors.Is(err, ErrCurrentUnavailable) {
+				t.Fatal(err)
+			}
+			if _, err := s.MarkEaten(ctx, scope); !errors.Is(err, ErrCurrentUnavailable) {
+				t.Fatal(err)
+			}
+			if _, err := s.Reroll(ctx, scope); !errors.Is(err, ErrNoCandidates) {
+				t.Fatal(err)
+			}
+			after, _ := store.Load(ctx, scope)
+			if !reflect.DeepEqual(before, after) {
+				t.Fatal("invalid current changed state")
+			}
+		})
+	}
+}
+
+func TestPreferenceFailuresDoNotChangeState(t *testing.T) {
+	now := time.Date(2026, 10, 9, 10, 0, 0, 0, time.UTC)
+	store := newTestStore()
+	s := service(t, preferenceOptions(), store, &now)
+	ctx := context.Background()
+	if _, err := s.Recommend(ctx, scope); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := store.Load(ctx, scope)
+	writes := store.writes
+	failure := errors.New("storage failure")
+	setters := []func() (Profile, error){
+		func() (Profile, error) { return s.SetBudget(ctx, scope, 1800) },
+		func() (Profile, error) { return s.SetExcludedTags(ctx, scope, []string{"牛肉"}) },
+	}
+	store.loadErr = failure
+	if _, err := s.Profile(ctx, scope); !errors.Is(err, failure) {
+		t.Fatal(err)
+	}
+	for _, set := range setters {
+		if _, err := set(); !errors.Is(err, failure) {
+			t.Fatal(err)
+		}
+	}
+	store.loadErr = nil
+	store.saveErr = failure
+	for _, set := range setters {
+		if _, err := set(); !errors.Is(err, failure) {
+			t.Fatal(err)
+		}
+	}
+	store.saveErr = nil
+	if _, err := s.SetBudget(ctx, scope, -1); err == nil {
+		t.Fatal("negative budget accepted")
+	}
+	if _, err := s.SetExcludedTags(ctx, scope, []string{"牛肉", " "}); err == nil {
+		t.Fatal("blank tag accepted")
+	}
+	if _, err := s.Profile(ctx, scope); err != nil {
+		t.Fatal(err)
+	}
+	after, _ := store.Load(ctx, scope)
+	if !reflect.DeepEqual(before, after) || store.writes != writes {
+		t.Fatal("failed or read-only preference command changed state")
+	}
+}
+
+func TestConcurrentPreferenceUpdatesPreserveBothFields(t *testing.T) {
+	now := time.Date(2026, 10, 9, 10, 0, 0, 0, time.UTC)
+	store := newTestStore()
+	s := service(t, preferenceOptions(), store, &now)
+	ctx := context.Background()
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		if _, err := s.SetBudget(ctx, scope, 1800); err != nil {
+			t.Error(err)
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		if _, err := s.SetExcludedTags(ctx, scope, []string{"牛肉"}); err != nil {
+			t.Error(err)
+		}
+	}()
+	wg.Wait()
+	profile, err := s.Profile(ctx, scope)
+	if err != nil || profile.BudgetCents != 1800 || !reflect.DeepEqual(profile.ExcludedTags, []string{"牛肉"}) {
+		t.Fatalf("lost preference update: %+v %v", profile, err)
 	}
 }

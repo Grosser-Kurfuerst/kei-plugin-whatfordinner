@@ -8,7 +8,19 @@ import (
 )
 
 func helpText() string {
-	return "晚饭插件用法：\n/dinner：查看今晚推荐\n/dinner 换一个：换一个候选\n/dinner 已吃：记录今天实际用餐\n/dinner 历史：查看最近已吃记录\n/dinner 候选：查看共享清单\n/dinner 帮助：查看用法"
+	return "晚饭插件用法：\n/dinner：查看今晚推荐\n/dinner 换一个：换一个候选\n/dinner 已吃：记录今天实际用餐\n/dinner 历史：查看最近已吃记录\n/dinner 候选：查看共享清单\n/dinner 预算 25.00：设置上限（元，正数，最多两位小数）；预算 不限：清除上限\n/dinner 忌口 辣 花生：替换忌口标签；忌口 清空：清除列表\n/dinner 帮助：查看用法和当前设置"
+}
+
+func formatProfile(profile decision.Profile) string {
+	budget := "不限"
+	if profile.BudgetCents > 0 {
+		budget = fmt.Sprintf("%d.%02d 元", profile.BudgetCents/100, profile.BudgetCents%100)
+	}
+	tags := "无"
+	if len(profile.ExcludedTags) > 0 {
+		tags = strings.Join(profile.ExcludedTags, "、")
+	}
+	return "当前预算：" + budget + "\n当前忌口：" + tags
 }
 
 func formatRecommendation(result decision.Recommendation) string {

@@ -2,7 +2,10 @@ package decision
 
 import (
 	"context"
+	"fmt"
+	"slices"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -77,7 +80,7 @@ func (s *Service) choose(ctx context.Context, scope Scope, reroll bool) (Recomme
 	}
 	if !reroll && state.Daily.Current != nil {
 		option, ok := s.catalog.Find(state.Daily.Current.ID)
-		if !ok || !option.Enabled {
+		if !ok || !matches(option, state.Profile) {
 			return Recommendation{}, ErrCurrentUnavailable
 		}
 		return makeResult(snapshot(option), state.History, now, false), nil
@@ -89,7 +92,7 @@ func (s *Service) choose(ctx context.Context, scope Scope, reroll bool) (Recomme
 	var available []WeightedOption
 	eligible := 0
 	for _, option := range s.catalog.List() {
-		if !option.Enabled {
+		if !matches(option, state.Profile) {
 			continue
 		}
 		eligible++
@@ -133,7 +136,7 @@ func (s *Service) MarkEaten(ctx context.Context, scope Scope) (Recommendation, e
 		return makeResult(*state.Daily.Current, state.History, now, true), nil
 	}
 	option, ok := s.catalog.Find(state.Daily.Current.ID)
-	if !ok || !option.Enabled {
+	if !ok || !matches(option, state.Profile) {
 		return Recommendation{}, ErrCurrentUnavailable
 	}
 	current := snapshot(option)
@@ -159,6 +162,72 @@ func (s *Service) History(ctx context.Context, scope Scope) ([]MealRecord, error
 		state.History = state.History[:7]
 	}
 	return state.History, nil
+}
+
+// Profile 查询当前预算和忌口，不改变状态。
+func (s *Service) Profile(ctx context.Context, scope Scope) (Profile, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	state, err := s.load(ctx, scope, s.now().In(s.location))
+	if err != nil {
+		return Profile{}, err
+	}
+	return state.Profile, nil
+}
+
+// SetBudget 保存预算上限（分），0 表示不限。
+func (s *Service) SetBudget(ctx context.Context, scope Scope, cents int64) (Profile, error) {
+	if cents < 0 {
+		return Profile{}, fmt.Errorf("预算不能为负")
+	}
+	return s.updateProfile(ctx, scope, func(p *Profile) { p.BudgetCents = cents })
+}
+
+// SetExcludedTags 替换忌口列表并去重，空列表表示无忌口。
+func (s *Service) SetExcludedTags(ctx context.Context, scope Scope, tags []string) (Profile, error) {
+	unique := make([]string, 0, len(tags))
+	for _, tag := range tags {
+		if strings.TrimSpace(tag) == "" {
+			return Profile{}, fmt.Errorf("忌口标签不能为空")
+		}
+		if !slices.Contains(unique, tag) {
+			unique = append(unique, tag)
+		}
+	}
+	return s.updateProfile(ctx, scope, func(p *Profile) { p.ExcludedTags = unique })
+}
+
+func (s *Service) updateProfile(ctx context.Context, scope Scope, update func(*Profile)) (Profile, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	state, err := s.load(ctx, scope, s.now().In(s.location))
+	if err != nil {
+		return Profile{}, err
+	}
+	update(&state.Profile)
+	if !state.Daily.Eaten {
+		state.Daily.Current = nil
+		state.Daily.TriedIDs = nil
+	}
+	if err := s.store.Save(ctx, scope, state); err != nil {
+		return Profile{}, err
+	}
+	return state.Profile, nil
+}
+
+func matches(option catalog.Option, profile Profile) bool {
+	if !option.Enabled {
+		return false
+	}
+	if profile.BudgetCents > 0 && (option.PriceCents == nil || *option.PriceCents > profile.BudgetCents) {
+		return false
+	}
+	for _, tag := range option.Tags {
+		if slices.Contains(profile.ExcludedTags, tag) {
+			return false
+		}
+	}
+	return true
 }
 
 func makeResult(option OptionSnapshot, history []MealRecord, now time.Time, eaten bool) Recommendation {

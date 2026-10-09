@@ -115,3 +115,22 @@ func TestStageTwoStateAndMealRoundTrip(t *testing.T) {
 		t.Fatalf("%+v %v", saved, err)
 	}
 }
+
+func TestStageThreeStateAndProfileRoundTrip(t *testing.T) {
+	memory := &memoryStorage{values: map[string][]byte{}}
+	ctx := context.Background()
+	scope := decision.Scope{Platform: "mock", BotID: "b", UserID: "u"}
+	memory.values[key(scope)] = []byte(`{"daily":{"date":"2026-10-09","current":{"id":"a","name":"A"},"tried_ids":["a"],"eaten":true},"history":[{"date":"2026-10-09","option":{"id":"a","name":"A"},"eaten_at":"2026-10-09T10:00:00Z"}]}`)
+	value, err := New(memory).Load(ctx, scope)
+	if err != nil || value.Profile.BudgetCents != 0 || len(value.Profile.ExcludedTags) != 0 || !value.Daily.Eaten || len(value.History) != 1 {
+		t.Fatalf("stage 3 state changed: %+v %v", value, err)
+	}
+	value.Profile = decision.Profile{BudgetCents: 1800, ExcludedTags: []string{"牛肉", "辣"}}
+	if err := New(memory).Save(ctx, scope, value); err != nil {
+		t.Fatal(err)
+	}
+	saved, err := New(memory).Load(ctx, scope)
+	if err != nil || saved.Profile.BudgetCents != 1800 || len(saved.Profile.ExcludedTags) != 2 || saved.Profile.ExcludedTags[0] != "牛肉" || !saved.Daily.Eaten || saved.History[0].Option.Name != "A" {
+		t.Fatalf("profile or existing fields lost: %+v %v", saved, err)
+	}
+}
