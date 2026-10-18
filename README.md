@@ -69,4 +69,4 @@ opts.Plugins = append(opts.Plugins, &dinner.Plugin{})
 
 当前内置 19 家南大鼓楼校区周边候选餐厅，比格和流浪泡泡均使用鼓楼吾悦广场店。价格为公开来源参考值，地点及价格核验情况见 [餐厅来源说明](docs/restaurant-sources.md)。
 
-更多说明：[完整使用指南](docs/usage.md) · [系统设计](docs/system-design.md) · [实现规划](docs/implementation-plan.md) · [实施记录](docs/implementation-results.md)
+更多说明：[完整使用指南](docs/usage.md) · [系统设计（历史）](docs/system-design.md) · [实现规划（历史）](docs/implementation-plan.md) · [实施记录](docs/implementation-results.md)

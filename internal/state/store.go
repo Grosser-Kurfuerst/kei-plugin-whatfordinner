@@ -20,14 +20,15 @@ var _ decision.Store = (*Store)(nil)
 // New 使用宿主提供的存储，不自行打开数据库。
 func New(storage bot.Storage) *Store { return &Store{storage: storage} }
 
-func key(scope decision.Scope) string {
-	data, _ := json.Marshal(scope) // Scope 仅包含固定顺序的字符串字段，编码不会失败。
-	return fmt.Sprintf("dinner:state:%x", sha256.Sum256(data))
+// storageKey 按前缀和作用域生成稳定键；作用域只含固定顺序的字符串字段，编码不会失败。
+func storageKey(prefix string, scope any) string {
+	data, _ := json.Marshal(scope)
+	return fmt.Sprintf("dinner:%s:%x", prefix, sha256.Sum256(data))
 }
 
 // Load 仅在键不存在时返回默认状态，其他错误保留错误链。
 func (s *Store) Load(ctx context.Context, scope decision.Scope) (decision.UserState, error) {
-	data, err := s.storage.Get(ctx, key(scope))
+	data, err := s.storage.Get(ctx, storageKey("state", scope))
 	if errors.Is(err, bot.ErrNotFound) {
 		return decision.UserState{}, nil
 	}
@@ -47,7 +48,7 @@ func (s *Store) Save(ctx context.Context, scope decision.Scope, value decision.U
 	if err != nil {
 		return fmt.Errorf("encode dinner state: %w", err)
 	}
-	if err := s.storage.Set(ctx, key(scope), data, 0); err != nil {
+	if err := s.storage.Set(ctx, storageKey("state", scope), data, 0); err != nil {
 		return fmt.Errorf("save dinner state: %w", err)
 	}
 	return nil

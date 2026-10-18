@@ -45,6 +45,7 @@ type MealRecord struct {
 
 // UserState 是一次读写的完整个人状态。
 type UserState struct {
+	// Profile 是最近一次生成个人推荐时使用的条件快照；会话当前设置保存在 PollState.Profile。
 	Profile Profile       `json:"profile"`
 	Daily   DailyDecision `json:"daily"`
 	History []MealRecord  `json:"history"`

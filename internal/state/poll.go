@@ -2,7 +2,6 @@ package state
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,13 +12,8 @@ import (
 
 var _ decision.PollStore = (*Store)(nil)
 
-func pollKey(scope decision.PollScope) string {
-	data, _ := json.Marshal(scope)
-	return fmt.Sprintf("dinner:poll:%x", sha256.Sum256(data))
-}
-
 func (s *Store) LoadPoll(ctx context.Context, scope decision.PollScope) (decision.PollState, error) {
-	data, err := s.storage.Get(ctx, pollKey(scope))
+	data, err := s.storage.Get(ctx, storageKey("poll", scope))
 	if errors.Is(err, bot.ErrNotFound) {
 		return decision.PollState{}, nil
 	}
@@ -38,7 +32,7 @@ func (s *Store) SavePoll(ctx context.Context, scope decision.PollScope, value de
 	if err != nil {
 		return fmt.Errorf("encode dinner poll: %w", err)
 	}
-	if err := s.storage.Set(ctx, pollKey(scope), data, 0); err != nil {
+	if err := s.storage.Set(ctx, storageKey("poll", scope), data, 0); err != nil {
 		return fmt.Errorf("save dinner poll: %w", err)
 	}
 	return nil

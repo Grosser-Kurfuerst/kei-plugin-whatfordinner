@@ -8,7 +8,7 @@ import (
 )
 
 func helpText() string {
-	return "晚饭插件用法：\n/dinner：查看今日推荐列表和票数（最多 5 项）\n/dinner 25：按每人 25 元预算生成列表（正数，最多两位小数）\n/dinner 不限：不限预算的列表\n/dinner 投票 1：投给编号 1，每人一票，可改投\n/dinner 推荐：获取个人随机推荐\n/dinner 换一个：换一个个人候选\n/dinner 已吃：记录个人推荐为实际用餐\n/dinner 历史：查看个人最近已吃记录\n/dinner 候选：查看共享清单\n/dinner 忌口 辣 花生：替换当前会话忌口\n/dinner 忌口 清空：清除忌口\n/dinner 帮助：查看用法和当前设置\n同群共享列表，私聊使用个人列表；改变预算或忌口会清空本轮票数，跨上海零点开启新一轮。"
+	return fmt.Sprintf("晚饭插件用法：\n/dinner：查看今日推荐列表和票数（最多 %d 项）\n/dinner 25：按每人 25 元预算生成列表（正数，最多两位小数）\n/dinner 不限：不限预算的列表\n/dinner 投票 1：投给编号 1，每人一票，可改投\n/dinner 推荐：获取个人随机推荐\n/dinner 换一个：换一个个人候选\n/dinner 已吃：记录个人推荐为实际用餐\n/dinner 历史：查看个人最近已吃记录\n/dinner 候选：查看共享清单\n/dinner 忌口 辣 花生：替换当前会话忌口\n/dinner 忌口 清空：清除忌口\n/dinner 帮助：查看用法和当前设置\n同群共享列表，私聊使用个人列表；改变预算或忌口会清空本轮票数，跨上海零点开启新一轮。", decision.MaxPollOptions)
 }
 
 func formatPoll(view decision.PollView) string {

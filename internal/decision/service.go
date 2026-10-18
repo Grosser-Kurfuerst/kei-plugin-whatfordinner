@@ -2,12 +2,12 @@ package decision
 
 import (
 	"context"
-	"fmt"
 	"slices"
 	"sort"
-	"strings"
 	"sync"
 	"time"
+	// 嵌入时区库，避免精简镜像缺少 zoneinfo 时无法启动。
+	_ "time/tzdata"
 
 	"example.com/whatfordinner/internal/catalog"
 )
@@ -31,25 +31,17 @@ func New(c *catalog.Catalog, store Store, now func() time.Time, randomFloat func
 	return &Service{catalog: c, store: store, now: now, randomFloat: randomFloat, location: location}, nil
 }
 
-// Recommend 返回有效的当前结果，没有结果时才抽选。
-func (s *Service) Recommend(ctx context.Context, scope Scope) (Recommendation, error) {
-	return s.choose(ctx, scope, false, nil)
-}
-
-// Reroll 排除本轮已经推荐的 ID 后抽选。
-func (s *Service) Reroll(ctx context.Context, scope Scope) (Recommendation, error) {
-	return s.choose(ctx, scope, true, nil)
-}
-
 // RecommendFor 在当前会话的筛选条件下生成个人推荐，历史仍归属于个人。
 func (s *Service) RecommendFor(ctx context.Context, scope Scope, profile Profile) (Recommendation, error) {
-	return s.choose(ctx, scope, false, &profile)
+	return s.choose(ctx, scope, false, profile)
 }
 
 // RerollFor 在当前会话的筛选条件下换选个人推荐。
 func (s *Service) RerollFor(ctx context.Context, scope Scope, profile Profile) (Recommendation, error) {
-	return s.choose(ctx, scope, true, &profile)
+	return s.choose(ctx, scope, true, profile)
 }
+
+func day(now time.Time) string { return now.Format(time.DateOnly) }
 
 func (s *Service) load(ctx context.Context, scope Scope, now time.Time) (UserState, error) {
 	if err := ctx.Err(); err != nil {
@@ -59,7 +51,7 @@ func (s *Service) load(ctx context.Context, scope Scope, now time.Time) (UserSta
 	if err != nil {
 		return state, err
 	}
-	today := now.Format(time.DateOnly)
+	today := day(now)
 	if state.Daily.Date != today {
 		state.Daily = DailyDecision{Date: today}
 	}
@@ -74,7 +66,7 @@ func (s *Service) load(ctx context.Context, scope Scope, now time.Time) (UserSta
 	return state, nil
 }
 
-func (s *Service) choose(ctx context.Context, scope Scope, reroll bool, profile *Profile) (Recommendation, error) {
+func (s *Service) choose(ctx context.Context, scope Scope, reroll bool, profile Profile) (Recommendation, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := s.now().In(s.location)
@@ -82,18 +74,16 @@ func (s *Service) choose(ctx context.Context, scope Scope, reroll bool, profile 
 	if err != nil {
 		return Recommendation{}, err
 	}
-	if profile != nil && (state.Profile.BudgetCents != profile.BudgetCents || !slices.Equal(state.Profile.ExcludedTags, profile.ExcludedTags)) {
-		state.Profile = Profile{BudgetCents: profile.BudgetCents, ExcludedTags: slices.Clone(profile.ExcludedTags)}
-		if !state.Daily.Eaten {
-			state.Daily.Current = nil
-			state.Daily.TriedIDs = nil
-		}
-	}
 	if state.Daily.Eaten {
 		if reroll {
 			return Recommendation{}, ErrAlreadyEaten
 		}
 		return makeResult(*state.Daily.Current, state.History, now, true), nil
+	}
+	if state.Profile.BudgetCents != profile.BudgetCents || !slices.Equal(state.Profile.ExcludedTags, profile.ExcludedTags) {
+		state.Profile = Profile{BudgetCents: profile.BudgetCents, ExcludedTags: slices.Clone(profile.ExcludedTags)}
+		state.Daily.Current = nil
+		state.Daily.TriedIDs = nil
 	}
 	if !reroll && state.Daily.Current != nil {
 		option, ok := s.catalog.Find(state.Daily.Current.ID)
@@ -133,6 +123,7 @@ func (s *Service) choose(ctx context.Context, scope Scope, reroll bool, profile 
 }
 
 // MarkEaten 将当前选项和已吃状态一次保存，重复调用不追加记录。
+// 校验使用生成当前推荐时的条件快照，避免会话设置变化后拒绝刚生成的推荐。
 func (s *Service) MarkEaten(ctx context.Context, scope Scope) (Recommendation, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -176,47 +167,6 @@ func (s *Service) History(ctx context.Context, scope Scope) ([]MealRecord, error
 	return state.History, nil
 }
 
-// Profile 查询当前预算和忌口，不改变状态。
-func (s *Service) Profile(ctx context.Context, scope Scope) (Profile, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	state, err := s.load(ctx, scope, s.now().In(s.location))
-	if err != nil {
-		return Profile{}, err
-	}
-	return state.Profile, nil
-}
-
-// SetBudget 保存预算上限（分），0 表示不限。
-func (s *Service) SetBudget(ctx context.Context, scope Scope, cents int64) (Profile, error) {
-	if cents < 0 {
-		return Profile{}, fmt.Errorf("预算不能为负")
-	}
-	return s.updateProfile(ctx, scope, func(p *Profile) { p.BudgetCents = cents })
-}
-
-// SetExcludedTags 替换忌口列表并去重，空列表表示无忌口。
-func (s *Service) SetExcludedTags(ctx context.Context, scope Scope, tags []string) (Profile, error) {
-	unique, err := uniqueTags(tags)
-	if err != nil {
-		return Profile{}, err
-	}
-	return s.updateProfile(ctx, scope, func(p *Profile) { p.ExcludedTags = unique })
-}
-
-func uniqueTags(tags []string) ([]string, error) {
-	unique := make([]string, 0, len(tags))
-	for _, tag := range tags {
-		if strings.TrimSpace(tag) == "" {
-			return nil, fmt.Errorf("忌口标签不能为空")
-		}
-		if !slices.Contains(unique, tag) {
-			unique = append(unique, tag)
-		}
-	}
-	return unique, nil
-}
-
 func (s *Service) candidates(profile Profile, history []MealRecord, now time.Time) []WeightedOption {
 	var items []WeightedOption
 	for _, option := range s.catalog.List() {
@@ -228,7 +178,10 @@ func (s *Service) candidates(profile Profile, history []MealRecord, now time.Tim
 	return items
 }
 
-// suggest 为新投票列表抽选至多五项，使用发起人的实际用餐历史，不写个人状态。
+// MaxPollOptions 是每轮投票列表的最大候选数。
+const MaxPollOptions = 5
+
+// suggest 为新投票列表抽选至多 MaxPollOptions 项，使用发起人的实际用餐历史，不写个人状态。
 func (s *Service) suggest(ctx context.Context, scope Scope, profile Profile) ([]OptionSnapshot, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -239,7 +192,7 @@ func (s *Service) suggest(ctx context.Context, scope Scope, profile Profile) ([]
 	}
 	items := s.candidates(profile, state.History, now)
 	var result []OptionSnapshot
-	for len(items) > 0 && len(result) < 5 {
+	for len(items) > 0 && len(result) < MaxPollOptions {
 		selected, err := Pick(items, s.randomFloat())
 		if err != nil {
 			return nil, err
@@ -253,24 +206,6 @@ func (s *Service) suggest(ctx context.Context, scope Scope, profile Profile) ([]
 		}
 	}
 	return result, nil
-}
-
-func (s *Service) updateProfile(ctx context.Context, scope Scope, update func(*Profile)) (Profile, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	state, err := s.load(ctx, scope, s.now().In(s.location))
-	if err != nil {
-		return Profile{}, err
-	}
-	update(&state.Profile)
-	if !state.Daily.Eaten {
-		state.Daily.Current = nil
-		state.Daily.TriedIDs = nil
-	}
-	if err := s.store.Save(ctx, scope, state); err != nil {
-		return Profile{}, err
-	}
-	return state.Profile, nil
 }
 
 func matches(option catalog.Option, profile Profile) bool {

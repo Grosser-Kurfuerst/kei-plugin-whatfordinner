@@ -312,3 +312,69 @@ func TestPollFailureAndCatalogChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestPollRejectsInvalidPreferences(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 10, 10, 10, 0, 0, 0, time.UTC)
+	store := newTestPollStore()
+	polls := NewPollService(service(t, preferenceOptions(), newTestStore(), &now), store)
+	budget := int64(-1)
+	if _, err := polls.List(ctx, group, scope, &budget); err == nil {
+		t.Fatal("negative budget accepted")
+	}
+	if _, err := polls.SetExcludedTags(ctx, group, []string{"牛肉", " "}); err == nil {
+		t.Fatal("blank tag accepted")
+	}
+	if store.writes != 0 {
+		t.Fatal("invalid preferences wrote state")
+	}
+}
+
+func TestConcurrentPreferenceUpdatesPreserveBothFields(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 10, 10, 10, 0, 0, 0, time.UTC)
+	polls := NewPollService(service(t, preferenceOptions(), newTestStore(), &now), newTestPollStore())
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		budget := int64(2000)
+		if _, err := polls.List(ctx, group, scope, &budget); err != nil {
+			t.Error(err)
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		if _, err := polls.SetExcludedTags(ctx, group, []string{"牛肉"}); err != nil {
+			t.Error(err)
+		}
+	}()
+	wg.Wait()
+	view, err := polls.List(ctx, group, scope, nil)
+	if err != nil || view.Profile.BudgetCents != 2000 || !reflect.DeepEqual(view.Profile.ExcludedTags, []string{"牛肉"}) {
+		t.Fatalf("lost preference update: %+v %v", view, err)
+	}
+}
+
+func TestPollRecommendationsUseConversationProfile(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 10, 10, 10, 0, 0, 0, time.UTC)
+	polls := NewPollService(service(t, preferenceOptions()[:2], newTestStore(), &now), newTestPollStore())
+	budget := int64(1800)
+	if _, err := polls.List(ctx, group, scope, &budget); err != nil {
+		t.Fatal(err)
+	}
+	got, err := polls.RecommendFor(ctx, group, scope)
+	if err != nil || got.Option.ID != "a" {
+		t.Fatalf("%+v %v", got, err)
+	}
+	if _, err := polls.RerollFor(ctx, group, scope); !errors.Is(err, ErrRoundExhausted) {
+		t.Fatal(err)
+	}
+	if _, err := polls.SetExcludedTags(ctx, group, []string{"牛肉"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := polls.RecommendFor(ctx, group, scope); !errors.Is(err, ErrNoCandidates) {
+		t.Fatal(err)
+	}
+}

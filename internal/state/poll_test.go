@@ -60,7 +60,7 @@ func TestPollStorageErrors(t *testing.T) {
 		t.Fatal(err)
 	}
 	memory.getErr = nil
-	memory.values[pollKey(scope)] = []byte("broken JSON")
+	memory.values[storageKey("poll", scope)] = []byte("broken JSON")
 	if _, err := store.LoadPoll(ctx, scope); err == nil {
 		t.Fatal("corrupted poll accepted")
 	}

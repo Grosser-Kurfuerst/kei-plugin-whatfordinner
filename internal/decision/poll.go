@@ -7,7 +7,6 @@ import (
 	"slices"
 	"strings"
 	"sync"
-	"time"
 )
 
 // PollScope 标识群共享列表或私聊个人列表，与个人历史的 Scope 分开。
@@ -71,7 +70,8 @@ func (s *PollService) load(ctx context.Context, scope PollScope) (PollState, boo
 	if err != nil {
 		return state, false, err
 	}
-	today := s.personal.now().In(s.personal.location).Format(time.DateOnly)
+	now := s.personal.now().In(s.personal.location)
+	today := day(now)
 	changed := state.Date != today
 	if changed {
 		state.Date = today
@@ -116,6 +116,29 @@ func (s *PollService) List(ctx context.Context, scope PollScope, initiator Scope
 		return PollView{}, ErrNoCandidates
 	}
 	return s.view(state), nil
+}
+
+// RecommendFor 在会话锁内读取当前条件并生成个人推荐，避免条件读取与抽选之间被其他成员修改。
+func (s *PollService) RecommendFor(ctx context.Context, pollScope PollScope, scope Scope) (Recommendation, error) {
+	return s.recommend(ctx, pollScope, scope, false)
+}
+
+// RerollFor 在会话锁内读取当前条件并换选个人推荐。
+func (s *PollService) RerollFor(ctx context.Context, pollScope PollScope, scope Scope) (Recommendation, error) {
+	return s.recommend(ctx, pollScope, scope, true)
+}
+
+func (s *PollService) recommend(ctx context.Context, pollScope PollScope, scope Scope, reroll bool) (Recommendation, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	state, _, err := s.load(ctx, pollScope)
+	if err != nil {
+		return Recommendation{}, err
+	}
+	if reroll {
+		return s.personal.RerollFor(ctx, scope, state.Profile)
+	}
+	return s.personal.RecommendFor(ctx, scope, state.Profile)
 }
 
 // Vote 每人一票，重复投同一项不写入，改投直接替换原票。
@@ -185,6 +208,19 @@ func (s *PollService) SetExcludedTags(ctx context.Context, scope PollScope, tags
 		return Profile{}, err
 	}
 	return state.Profile, nil
+}
+
+func uniqueTags(tags []string) ([]string, error) {
+	unique := make([]string, 0, len(tags))
+	for _, tag := range tags {
+		if strings.TrimSpace(tag) == "" {
+			return nil, fmt.Errorf("忌口标签不能为空")
+		}
+		if !slices.Contains(unique, tag) {
+			unique = append(unique, tag)
+		}
+	}
+	return unique, nil
 }
 
 func (s *PollService) view(state PollState) PollView {

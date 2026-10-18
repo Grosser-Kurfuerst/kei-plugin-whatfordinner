@@ -69,7 +69,7 @@ func TestStateRoundTripAndIsolation(t *testing.T) {
 	}
 	left := decision.Scope{Platform: "a:b", BotID: "c", UserID: "d"}
 	right := decision.Scope{Platform: "a", BotID: "b:c", UserID: "d"}
-	if key(left) == key(right) {
+	if storageKey("state", left) == storageKey("state", right) {
 		t.Fatal("ambiguous scope encoding")
 	}
 }
@@ -85,7 +85,7 @@ func TestStorageErrors(t *testing.T) {
 		t.Fatal(err)
 	}
 	memory.getErr = nil
-	memory.values[key(scope)] = []byte("broken JSON")
+	memory.values[storageKey("state", scope)] = []byte("broken JSON")
 	if _, err := store.Load(ctx, scope); err == nil {
 		t.Fatal("corruption ignored")
 	}
@@ -100,7 +100,7 @@ func TestStageTwoStateAndMealRoundTrip(t *testing.T) {
 	store := New(memory)
 	ctx := context.Background()
 	scope := decision.Scope{Platform: "mock", BotID: "b", UserID: "u"}
-	memory.values[key(scope)] = []byte(`{"daily":{"date":"2026-10-09","current":{"id":"a","name":"A"},"tried_ids":["a"]}}`)
+	memory.values[storageKey("state", scope)] = []byte(`{"daily":{"date":"2026-10-09","current":{"id":"a","name":"A"},"tried_ids":["a"]}}`)
 	value, err := store.Load(ctx, scope)
 	if err != nil || value.Daily.Current.ID != "a" || value.Daily.Eaten || len(value.History) != 0 {
 		t.Fatalf("%+v %v", value, err)
@@ -120,7 +120,7 @@ func TestStageThreeStateAndProfileRoundTrip(t *testing.T) {
 	memory := &memoryStorage{values: map[string][]byte{}}
 	ctx := context.Background()
 	scope := decision.Scope{Platform: "mock", BotID: "b", UserID: "u"}
-	memory.values[key(scope)] = []byte(`{"daily":{"date":"2026-10-09","current":{"id":"a","name":"A"},"tried_ids":["a"],"eaten":true},"history":[{"date":"2026-10-09","option":{"id":"a","name":"A"},"eaten_at":"2026-10-09T10:00:00Z"}]}`)
+	memory.values[storageKey("state", scope)] = []byte(`{"daily":{"date":"2026-10-09","current":{"id":"a","name":"A"},"tried_ids":["a"],"eaten":true},"history":[{"date":"2026-10-09","option":{"id":"a","name":"A"},"eaten_at":"2026-10-09T10:00:00Z"}]}`)
 	value, err := New(memory).Load(ctx, scope)
 	if err != nil || value.Profile.BudgetCents != 0 || len(value.Profile.ExcludedTags) != 0 || !value.Daily.Eaten || len(value.History) != 1 {
 		t.Fatalf("stage 3 state changed: %+v %v", value, err)

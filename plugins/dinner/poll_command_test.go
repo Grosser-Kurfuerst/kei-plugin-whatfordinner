@@ -5,26 +5,16 @@ import (
 	"errors"
 	"strings"
 	"testing"
-	"time"
 
-	"example.com/whatfordinner/internal/decision"
-	"example.com/whatfordinner/internal/state"
 	"github.com/RandomLemon/kei/pkg/bot"
 )
 
 func pollHandler(t *testing.T) (*testStorage, bot.Handler) {
 	t.Helper()
-	p, h := setupPlugin(t, []any{
+	_, h, storage := setupPluginAt(t, []any{
 		map[string]any{"id": "a", "name": "A", "price_cents": 1800, "tags": []string{"牛肉"}, "enabled": true},
 		map[string]any{"id": "b", "name": "B", "price_cents": 2000, "enabled": true},
-	})
-	storage := &testStorage{values: make(map[string][]byte)}
-	var err error
-	p.service, err = decision.New(p.catalog, state.New(storage), time.Now, func() float64 { return 0 })
-	if err != nil {
-		t.Fatal(err)
-	}
-	p.polls = decision.NewPollService(p.service, state.New(storage))
+	}, testClock)
 	return storage, h
 }
 

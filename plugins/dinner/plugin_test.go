@@ -13,11 +13,21 @@ import (
 	"time"
 )
 
+var testClock = func() time.Time { return time.Date(2026, 10, 19, 4, 0, 0, 0, time.UTC) }
+
 func setupPlugin(t *testing.T, items []any) (*Plugin, bot.Handler) {
+	t.Helper()
+	p, h, _ := setupPluginAt(t, items, testClock)
+	return p, h
+}
+
+// setupPluginAt 使用可控时钟和固定随机值重建服务，避免跨零点与概率导致的测试抖动。
+func setupPluginAt(t *testing.T, items []any, now func() time.Time) (*Plugin, bot.Handler, *testStorage) {
 	t.Helper()
 	p := &Plugin{}
 	reg := bot.NewRecordingRegistrar()
-	ctx := bot.WithPluginContext(context.Background(), bot.PluginContext{Storage: &testStorage{values: make(map[string][]byte)}, Config: bot.NewConfig(map[string]any{"catalog": map[string]any{"items": items}})})
+	storage := &testStorage{values: make(map[string][]byte)}
+	ctx := bot.WithPluginContext(context.Background(), bot.PluginContext{Storage: storage, Config: bot.NewConfig(map[string]any{"catalog": map[string]any{"items": items}})})
 	if err := p.Setup(ctx, reg); err != nil {
 		t.Fatal(err)
 	}
@@ -25,7 +35,13 @@ func setupPlugin(t *testing.T, items []any) (*Plugin, bot.Handler) {
 	if !ok {
 		t.Fatal("missing command")
 	}
-	return p, rule.Handler
+	service, err := decision.New(p.catalog, state.New(storage), now, func() float64 { return 0 })
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.service = service
+	p.polls = decision.NewPollService(service, state.New(storage))
+	return p, rule.Handler, storage
 }
 
 func invoke(t *testing.T, h bot.Handler, sender *bot.User, args ...string) string {
@@ -128,7 +144,11 @@ func TestRecommendationsAndReplyFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, group := range []string{"g1", "g2", ""} {
-		e.Channel = &bot.Channel{ID: group}
+		if group == "" {
+			e.Channel = nil
+		} else {
+			e.Channel = &bot.Channel{ID: group, Kind: bot.MessageGroup}
+		}
 		reply := bot.NewNoopReply()
 		if err := h(context.Background(), e, reply); err != nil {
 			t.Fatal(err)
@@ -263,14 +283,7 @@ func TestPreferenceCommandsAndInvalidInput(t *testing.T) {
 }
 
 func TestPreferenceHandlerStorageAndSendFailures(t *testing.T) {
-	p, h := setupPlugin(t, nil)
-	storage := &testStorage{values: map[string][]byte{}}
-	var err error
-	p.service, err = decision.New(p.catalog, state.New(storage), time.Now, func() float64 { return 0 })
-	if err != nil {
-		t.Fatal(err)
-	}
-	p.polls = decision.NewPollService(p.service, state.New(storage))
+	_, h, storage := setupPluginAt(t, nil, testClock)
 	failure := errors.New("storage failure")
 	u := &bot.User{ID: "pref"}
 	for _, args := range [][]string{{"18.00"}, {"忌口", "牛肉"}, {"帮助"}} {

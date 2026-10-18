@@ -83,14 +83,10 @@ func (p *Plugin) handle(ctx context.Context, e *bot.Event, r bot.Reply) error {
 	var result decision.Recommendation
 	var err error
 	if len(args) == 1 && (args[0] == "推荐" || args[0] == "换一个") {
-		profile, profileErr := p.polls.Profile(ctx, pollScope)
-		if profileErr != nil {
-			return profileErr
-		}
 		if args[0] == "推荐" {
-			result, err = p.service.RecommendFor(ctx, scope, profile)
+			result, err = p.polls.RecommendFor(ctx, pollScope, scope)
 		} else {
-			result, err = p.service.RerollFor(ctx, scope, profile)
+			result, err = p.polls.RerollFor(ctx, pollScope, scope)
 		}
 	} else if len(args) == 1 && args[0] == "已吃" {
 		result, err = p.service.MarkEaten(ctx, scope)
