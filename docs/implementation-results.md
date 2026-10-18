@@ -129,6 +129,6 @@
 
 ### 2026-10-19：四层标签配置与 `/dinner 标签`
 
-标签词表改为 [`config.yaml`](../config.yaml) 的 `plugins.dinner.tag_groups`，固定 `大类`、`菜系`、`品类`、`就餐形式` 四层，共 56 个常用值；`catalog.items[].tags` 只能使用词表中的值，启动时校验，未知标签、重复层、空层或跨层重复都会使插件启动失败。餐厅标签同步补全 `点餐`/`自助餐`、品类和大类。
+标签词表改为 [`config.yaml`](../config.yaml) 的 `plugins.dinner.tag_groups`，固定 `大类`、`菜系`、`品类`、`就餐形式` 四层，共 45 个常用值；`catalog.items[].tags` 只能使用词表中的值，启动时校验，未知标签、重复层、空层或跨层重复都会使插件启动失败。餐厅标签同步补全 `点餐`/`自助餐`、品类和大类。
 
 新增 `/dinner 标签`，按四层顺序展示当前支持的标签；`/dinner 忌口` 使用同一词表校验，词表内但暂无餐厅使用的标签也会被接受，便于未来扩展。`TestTagTaxonomy`、`TestTagTaxonomyValidation`、`TestTagTaxonomyValidatesCatalog`、`TestCatalogTagValidation`、`TestPollUsesConfiguredTagSet` 覆盖词表结构、启动校验、未来标签和命令展示。
