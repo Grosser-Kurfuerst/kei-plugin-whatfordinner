@@ -1,5 +1,7 @@
 # whatfordinner
 
+# 是啊，吃什么
+
 [kei](https://github.com/RandomLemon/kei) 的晚饭插件：从餐厅清单生成今日推荐列表，支持预算、忌口、群投票和个人随机推荐。最近七天实际吃过的餐厅会降低被选中的概率。
 
 ## 快速启动
