@@ -256,8 +256,8 @@ func TestPreferenceCommandsAndInvalidInput(t *testing.T) {
 	first := invoke(t, h, u)
 	for _, args := range [][]string{
 		{"预算"}, {"预算", "25"}, {"0"}, {"-1"}, {"text"}, {"1.001"}, {"18", "extra"},
-		{"投票"}, {"投票", "0"}, {"投票", "-1"}, {"投票", "1.1"}, {"投票", "+1"}, {"投票", "1", "extra"},
-		{"忌口"}, {"忌口", " "}, {"已吃", "extra"}, {"换一个", "extra"}, {"历史", "extra"}, {"帮助", "extra"}, {"unknown"},
+		{"投票"}, {"投票", "a", "extra"},
+		{"忌口"}, {"忌口", " "}, {"换一个", "extra"}, {"历史", "extra"}, {"帮助", "extra"}, {"unknown"},
 	} {
 		if text := invoke(t, h, u, args...); !strings.Contains(text, "晚饭插件用法") {
 			t.Fatalf("invalid %v: %q", args, text)

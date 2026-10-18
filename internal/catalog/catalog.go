@@ -29,6 +29,9 @@ func New(items []Option) (*Catalog, error) {
 		if strings.TrimSpace(item.ID) == "" || strings.TrimSpace(item.Name) == "" {
 			return nil, fmt.Errorf("catalog.items[%d]: id 和 name 不能为空", i)
 		}
+		if strings.ContainsAny(item.ID, " \t\r\n") {
+			return nil, fmt.Errorf("catalog.items[%d]: id 不能包含空白字符", i)
+		}
 		if _, exists := c.index[item.ID]; exists {
 			return nil, fmt.Errorf("catalog.items[%d]: id %q 重复", i, item.ID)
 		}

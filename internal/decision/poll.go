@@ -32,7 +32,6 @@ type PollStore interface {
 }
 
 type PollEntry struct {
-	Number    int
 	Option    OptionSnapshot
 	Votes     int
 	Available bool
@@ -47,8 +46,9 @@ type PollView struct {
 
 var (
 	ErrNoPoll                = errors.New("今天还没有投票列表，请先发送 /dinner 或 /dinner 25。")
-	ErrInvalidVote           = errors.New("编号不在当前列表中，请发送 /dinner 查看编号。")
-	ErrPollOptionUnavailable = errors.New("该选项当前不可投票，请发送 /dinner 查看其他可用选项。")
+	ErrInvalidOption         = errors.New("id 不在当前列表中，请发送 /dinner 查看 id。")
+	ErrPollOptionUnavailable = errors.New("该选项当前不可用，请发送 /dinner 查看其他可用选项。")
+	ErrUnknownTag            = errors.New("标签不在当前词表中，请发送 /dinner 标签 查看支持的标签")
 )
 
 // PollService 串行处理共享列表的创建和投票，个人服务只提供清单与抽选规则。
@@ -141,10 +141,23 @@ func (s *PollService) recommend(ctx context.Context, pollScope PollScope, scope 
 	return s.personal.RecommendFor(ctx, scope, state.Profile)
 }
 
-// Vote 每人一票，重复投同一项不写入，改投直接替换原票。
-func (s *PollService) Vote(ctx context.Context, scope PollScope, voter string, number int) (PollView, error) {
+func optionByID(options []OptionSnapshot, id string) (OptionSnapshot, bool) {
+	for _, option := range options {
+		if option.ID == id {
+			return option, true
+		}
+	}
+	return OptionSnapshot{}, false
+}
+
+// Vote 每人一票，按稳定 id 选投；重复投同一 id 不写入，改投直接替换原票。
+func (s *PollService) Vote(ctx context.Context, scope PollScope, voter, id string) (PollView, error) {
 	if strings.TrimSpace(voter) == "" {
 		return PollView{}, fmt.Errorf("投票者不能为空")
+	}
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return PollView{}, ErrInvalidOption
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -155,10 +168,9 @@ func (s *PollService) Vote(ctx context.Context, scope PollScope, voter string, n
 	if len(state.Options) == 0 {
 		return PollView{}, ErrNoPoll
 	}
-	if number < 1 || number > len(state.Options) {
-		return PollView{}, ErrInvalidVote
+	if _, ok := optionByID(state.Options, id); !ok {
+		return PollView{}, ErrInvalidOption
 	}
-	id := state.Options[number-1].ID
 	option, ok := s.personal.catalog.Find(id)
 	if !ok || !matches(option, state.Profile) {
 		return PollView{}, ErrPollOptionUnavailable
@@ -229,9 +241,9 @@ func (s *PollService) view(state PollState) PollView {
 		counts[id]++
 	}
 	view := PollView{Date: state.Date, Profile: state.Profile, Voters: len(state.Ballots)}
-	for i, saved := range state.Options {
+	for _, saved := range state.Options {
 		option, found := s.personal.catalog.Find(saved.ID)
-		entry := PollEntry{Number: i + 1, Option: saved, Votes: counts[saved.ID], Available: found && matches(option, state.Profile)}
+		entry := PollEntry{Option: saved, Votes: counts[saved.ID], Available: found && matches(option, state.Profile)}
 		if found {
 			entry.Option = snapshot(option)
 		}

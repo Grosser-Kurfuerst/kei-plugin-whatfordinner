@@ -15,16 +15,16 @@ func formatPoll(view decision.PollView) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "今日推荐列表（%s，%d 人投票）：\n%s", view.Date, view.Voters, formatProfile(view.Profile))
 	for _, entry := range view.Entries {
-		fmt.Fprintf(&b, "\n%d. %s [%s] — %d 票", entry.Number, entry.Option.Name, entry.Option.ID, entry.Votes)
+		fmt.Fprintf(&b, "\n%s [%s] — %d 票", entry.Option.Name, entry.Option.ID, entry.Votes)
 		if entry.Option.Venue != "" {
 			fmt.Fprintf(&b, "\n   地点：%s", entry.Option.Venue)
 		}
 		fmt.Fprintf(&b, "\n   %s", money(entry.Option.PriceCents))
 		if !entry.Available {
-			b.WriteString("（当前不可投票）")
+			b.WriteString("（当前不可用）")
 		}
 	}
-	b.WriteString("\n发送 /dinner 投票 编号；同一编号重复投票不加票，改投会转移原票。")
+	b.WriteString("\n发送 /dinner 投票 id；id 为方括号内的值，同一 id 重复投票不加票，改投会转移原票。")
 	return b.String()
 }
 

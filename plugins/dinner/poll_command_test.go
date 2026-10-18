@@ -34,21 +34,21 @@ func invokePoll(t *testing.T, h bot.Handler, user, group string, args ...string)
 func TestGroupPollCommandsAndPrivateIsolation(t *testing.T) {
 	_, h := pollHandler(t)
 	first := invokePoll(t, h, "u1", "g1")
-	if !strings.Contains(first, "1. A [a] — 0 票") || !strings.Contains(first, "2. B [b] — 0 票") {
+	if !strings.Contains(first, "A [a] — 0 票") || !strings.Contains(first, "B [b] — 0 票") {
 		t.Fatal(first)
 	}
 	if got := invokePoll(t, h, "u2", "g1"); got != first {
 		t.Fatalf("group members see different lists: %s", got)
 	}
-	invokePoll(t, h, "u1", "g1", "投票", "1")
-	text := invokePoll(t, h, "u2", "g1", "投票", "1")
+	invokePoll(t, h, "u1", "g1", "投票", "a")
+	text := invokePoll(t, h, "u2", "g1", "投票", "a")
 	if !strings.Contains(text, "[a] — 2 票") || !strings.Contains(text, "2 人投票") {
 		t.Fatal(text)
 	}
-	if got := invokePoll(t, h, "u2", "g1", "投票", "1"); got != text {
+	if got := invokePoll(t, h, "u2", "g1", "投票", "a"); got != text {
 		t.Fatalf("duplicate vote changed totals: %s", got)
 	}
-	text = invokePoll(t, h, "u1", "g1", "投票", "2")
+	text = invokePoll(t, h, "u1", "g1", "投票", "b")
 	if !strings.Contains(text, "[a] — 1 票") || !strings.Contains(text, "[b] — 1 票") || !strings.Contains(text, "2 人投票") {
 		t.Fatal(text)
 	}
@@ -57,14 +57,14 @@ func TestGroupPollCommandsAndPrivateIsolation(t *testing.T) {
 			t.Fatalf("poll leaked into %v: %s", conversation, got)
 		}
 	}
-	invokePoll(t, h, "u1", "", "投票", "2")
+	invokePoll(t, h, "u1", "", "投票", "b")
 	if got := invokePoll(t, h, "u2", ""); got != first {
 		t.Fatalf("private poll leaked: %s", got)
 	}
 	if text := invokePoll(t, h, "u1", "g1", "历史"); !strings.Contains(text, "暂无") {
 		t.Fatalf("voting recorded a meal: %s", text)
 	}
-	// The same numeric budget retains votes; a different budget opens a new round.
+	// The same budget retains votes; a different budget opens a new round.
 	invokePoll(t, h, "u1", "g1", "不限")
 	if text := invokePoll(t, h, "u2", "g1"); !strings.Contains(text, "2 人投票") {
 		t.Fatal(text)
@@ -73,7 +73,7 @@ func TestGroupPollCommandsAndPrivateIsolation(t *testing.T) {
 	if !strings.Contains(text, "[a] — 0 票") || strings.Contains(text, "[b]") {
 		t.Fatal(text)
 	}
-	invokePoll(t, h, "u2", "g1", "投票", "1")
+	invokePoll(t, h, "u2", "g1", "投票", "a")
 	if text := invokePoll(t, h, "u1", "g1", "18.00"); !strings.Contains(text, "[a] — 1 票") {
 		t.Fatal(text)
 	}
@@ -90,7 +90,7 @@ func TestGroupPollCommandsAndPrivateIsolation(t *testing.T) {
 func TestPollReplyAndStorageFailures(t *testing.T) {
 	storage, h := pollHandler(t)
 	invokePoll(t, h, "u1", "g1")
-	e := &bot.Event{Platform: "mock", BotID: "bot", Sender: &bot.User{ID: "u1"}, Channel: &bot.Channel{ID: "g1", Kind: bot.MessageGroup}, Command: &bot.Command{Name: "dinner", Args: []string{"投票", "1"}}}
+	e := &bot.Event{Platform: "mock", BotID: "bot", Sender: &bot.User{ID: "u1"}, Channel: &bot.Channel{ID: "g1", Kind: bot.MessageGroup}, Command: &bot.Command{Name: "dinner", Args: []string{"投票", "a"}}}
 	failure := errors.New("send failed")
 	r := &failedReply{Reply: bot.NewNoopReply(), err: failure}
 	if err := h(context.Background(), e, r); !errors.Is(err, failure) {
@@ -100,7 +100,7 @@ func TestPollReplyAndStorageFailures(t *testing.T) {
 		t.Fatalf("saved vote lost after failed send: %s", got)
 	}
 	storage.setErr = errors.New("save failed")
-	e.Command.Args = []string{"投票", "2"}
+	e.Command.Args = []string{"投票", "b"}
 	noReply := bot.NewNoopReply()
 	if err := h(context.Background(), e, noReply); !errors.Is(err, storage.setErr) || noReply.PlainText() != "" {
 		t.Fatalf("save failure reported success: %v %q", err, noReply.PlainText())
@@ -110,8 +110,14 @@ func TestPollReplyAndStorageFailures(t *testing.T) {
 		t.Fatalf("failed vote changed stored totals: %s", got)
 	}
 	storage.getErr = errors.New("load failed")
-	for _, args := range [][]string{{"投票"}, {"投票", "-1"}, {"投票", "２"}, {"投票", "1", "extra"}, {"预算", "25"}} {
+	for _, args := range [][]string{{"投票"}, {"投票", "a", "extra"}, {"预算", "25"}} {
 		if text := invokePoll(t, h, "u1", "g1", args...); !strings.Contains(text, "晚饭插件用法") {
+			t.Fatal(text)
+		}
+	}
+	storage.getErr = nil
+	for _, id := range []string{"missing", "-1", "２"} {
+		if text := invokePoll(t, h, "u1", "g1", "投票", id); !strings.Contains(text, "id 不在当前列表中") {
 			t.Fatal(text)
 		}
 	}

@@ -77,22 +77,22 @@ func TestPollListVoteAndRestart(t *testing.T) {
 	if err != nil || !reflect.DeepEqual(first, second) || pollStore.writes != 1 || personalStore.writes != 0 {
 		t.Fatalf("shared list changed or created a meal: %+v %v", second, err)
 	}
-	view, err := polls.Vote(ctx, group, "u1", 1)
+	view, err := polls.Vote(ctx, group, "u1", "a")
 	if err != nil || view.Entries[0].Votes != 1 || view.Voters != 1 {
 		t.Fatalf("%+v %v", view, err)
 	}
 	writes := pollStore.writes
-	if _, err := polls.Vote(ctx, group, "u1", 1); err != nil || pollStore.writes != writes {
+	if _, err := polls.Vote(ctx, group, "u1", "a"); err != nil || pollStore.writes != writes {
 		t.Fatalf("duplicate vote wrote again: %v", err)
 	}
-	if _, err := polls.Vote(ctx, group, "u2", 2); err != nil {
+	if _, err := polls.Vote(ctx, group, "u2", "b"); err != nil {
 		t.Fatal(err)
 	}
-	view, err = polls.Vote(ctx, group, "u1", 2)
+	view, err = polls.Vote(ctx, group, "u1", "b")
 	if err != nil || view.Entries[0].Votes != 0 || view.Entries[1].Votes != 2 || view.Voters != 2 {
 		t.Fatalf("revote did not transfer the old vote: %+v %v", view, err)
 	}
-	if view.Entries[0].Number != 1 || view.Entries[0].Option.ID != "a" || view.Entries[1].Number != 2 {
+	if view.Entries[0].Option.ID != "a" || view.Entries[1].Option.ID != "b" {
 		t.Fatal("vote counts reordered identifiers")
 	}
 	polls = NewPollService(service(t, preferenceOptions(), personalStore, &now), pollStore)
@@ -106,7 +106,7 @@ func TestPollListVoteAndRestart(t *testing.T) {
 		{Platform: "mock", BotID: "other", Kind: "group", ID: "g1"},
 		{Platform: "other", BotID: "bot", Kind: "group", ID: "g1"},
 	} {
-		if _, err := polls.Vote(ctx, separate, "u1", 1); !errors.Is(err, ErrNoPoll) {
+		if _, err := polls.Vote(ctx, separate, "u1", "a"); !errors.Is(err, ErrNoPoll) {
 			t.Fatalf("scope leaked: %+v %v", separate, err)
 		}
 	}
@@ -122,7 +122,7 @@ func TestPollFiltersAndResets(t *testing.T) {
 	if err != nil || len(view.Entries) != 1 || view.Entries[0].Option.ID != "a" {
 		t.Fatalf("%+v %v", view, err)
 	}
-	if _, err := polls.Vote(ctx, group, "u1", 1); err != nil {
+	if _, err := polls.Vote(ctx, group, "u1", "a"); err != nil {
 		t.Fatal(err)
 	}
 	budget = 1799
@@ -141,17 +141,14 @@ func TestPollFiltersAndResets(t *testing.T) {
 	if _, err := polls.SetExcludedTags(ctx, group, []string{"牛肉", "牛肉"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := polls.Vote(ctx, group, "u1", 1); !errors.Is(err, ErrNoPoll) {
+	if _, err := polls.Vote(ctx, group, "u1", "a"); !errors.Is(err, ErrNoPoll) {
 		t.Fatal(err)
 	}
 	view, err = polls.List(ctx, group, scope, nil)
 	if err != nil || view.Entries[0].Option.ID != "b" || len(view.Entries) != 2 || len(view.Profile.ExcludedTags) != 1 {
 		t.Fatalf("%+v %v", view, err)
 	}
-	if _, err := polls.Vote(ctx, group, "u1", 1); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := polls.SetExcludedTags(ctx, group, []string{"牛肉"}); err != nil {
+	if _, err := polls.Vote(ctx, group, "u1", "b"); err != nil {
 		t.Fatal(err)
 	}
 	view, err = polls.List(ctx, group, scope, nil)
@@ -159,8 +156,8 @@ func TestPollFiltersAndResets(t *testing.T) {
 		t.Fatal("unchanged exclusions erased votes")
 	}
 	now = time.Date(2026, 10, 10, 16, 0, 0, 0, time.UTC)
-	if _, err := polls.Vote(ctx, group, "u1", 1); !errors.Is(err, ErrNoPoll) {
-		t.Fatal("yesterday's numbered list accepted a new vote")
+	if _, err := polls.Vote(ctx, group, "u1", "a"); !errors.Is(err, ErrNoPoll) {
+		t.Fatal("yesterday's list accepted a new vote")
 	}
 	view, err = polls.List(ctx, group, scope, nil)
 	if err != nil || view.Date != "2026-10-11" || view.Voters != 0 || len(view.Profile.ExcludedTags) != 1 {
@@ -229,10 +226,10 @@ func TestConcurrentPollCreationAndVotes(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 			voter := fmt.Sprintf("user-%d", i)
-			if _, err := polls.Vote(ctx, group, voter, 1); err != nil {
+			if _, err := polls.Vote(ctx, group, voter, "a"); err != nil {
 				t.Error(err)
 			}
-			if _, err := polls.Vote(ctx, group, voter, 1); err != nil {
+			if _, err := polls.Vote(ctx, group, voter, "a"); err != nil {
 				t.Error(err)
 			}
 		}(i)
@@ -255,20 +252,20 @@ func TestPollFailureAndCatalogChanges(t *testing.T) {
 	if _, err := polls.List(ctx, group, scope, &budget); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := polls.Vote(ctx, group, "u1", 1); err != nil {
+	if _, err := polls.Vote(ctx, group, "u1", "a"); err != nil {
 		t.Fatal(err)
 	}
 	before, _ := store.LoadPoll(ctx, group)
 	writes := store.writes
-	for _, number := range []int{0, -1, 3} {
-		if _, err := polls.Vote(ctx, group, "u2", number); !errors.Is(err, ErrInvalidVote) {
+	for _, id := range []string{"", "missing", "A"} {
+		if _, err := polls.Vote(ctx, group, "u2", id); !errors.Is(err, ErrInvalidOption) {
 			t.Fatal(err)
 		}
 	}
 	failure := errors.New("disk failure")
 	operations := []func() error{
 		func() error { b := int64(2500); _, err := polls.List(ctx, group, scope, &b); return err },
-		func() error { _, err := polls.Vote(ctx, group, "u2", 2); return err },
+		func() error { _, err := polls.Vote(ctx, group, "u2", "b"); return err },
 		func() error { _, err := polls.SetExcludedTags(ctx, group, []string{"牛肉"}); return err },
 	}
 	store.loadErr = failure
@@ -295,20 +292,20 @@ func TestPollFailureAndCatalogChanges(t *testing.T) {
 	price := int64(2001)
 	items[0].PriceCents = &price
 	polls = NewPollService(service(t, items, personalStore, &now), store)
-	if _, err := polls.Vote(ctx, group, "u2", 1); !errors.Is(err, ErrPollOptionUnavailable) {
+	if _, err := polls.Vote(ctx, group, "u2", "a"); !errors.Is(err, ErrPollOptionUnavailable) {
 		t.Fatal(err)
 	}
 	view, err := polls.List(ctx, group, scope, nil)
-	if err != nil || view.Entries[0].Available || view.Entries[0].Votes != 1 || view.Entries[1].Number != 2 {
+	if err != nil || view.Entries[0].Available || view.Entries[0].Votes != 1 || view.Entries[1].Option.ID != "b" {
 		t.Fatalf("changed catalog silently reindexed the poll: %+v %v", view, err)
 	}
 	polls = NewPollService(service(t, nil, personalStore, &now), store)
-	if _, err := polls.Vote(ctx, group, "u2", 1); !errors.Is(err, ErrPollOptionUnavailable) {
+	if _, err := polls.Vote(ctx, group, "u2", "a"); !errors.Is(err, ErrPollOptionUnavailable) {
 		t.Fatal(err)
 	}
 	cancelled, cancel := context.WithCancel(ctx)
 	cancel()
-	if _, err := polls.Vote(cancelled, group, "u2", 1); !errors.Is(err, context.Canceled) {
+	if _, err := polls.Vote(cancelled, group, "u2", "a"); !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
 }

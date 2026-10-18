@@ -44,14 +44,10 @@ func (p *Plugin) handle(ctx context.Context, e *bot.Event, r bot.Reply) error {
 		return r.Text(helpText() + "\n\n" + formatProfile(profile)).Send(ctx)
 	}
 	if len(args) > 0 && args[0] == "投票" {
-		if len(args) != 2 {
+		if len(args) != 2 || strings.TrimSpace(args[1]) == "" {
 			return r.Text(helpText()).Send(ctx)
 		}
-		number, valid := parseVoteNumber(args[1])
-		if !valid {
-			return r.Text(helpText()).Send(ctx)
-		}
-		view, err := p.polls.Vote(ctx, pollScope, e.Sender.ID, number)
+		view, err := p.polls.Vote(ctx, pollScope, e.Sender.ID, args[1])
 		return replyPoll(ctx, r, view, err, "投票已更新。\n")
 	}
 	if len(args) > 0 && args[0] == "忌口" {
@@ -123,25 +119,12 @@ func pollScopeFor(e *bot.Event) (decision.PollScope, bool) {
 
 func replyPoll(ctx context.Context, r bot.Reply, view decision.PollView, err error, prefix string) error {
 	if err != nil {
-		if errors.Is(err, decision.ErrNoCandidates) || errors.Is(err, decision.ErrNoPoll) || errors.Is(err, decision.ErrInvalidVote) || errors.Is(err, decision.ErrPollOptionUnavailable) {
+		if errors.Is(err, decision.ErrNoCandidates) || errors.Is(err, decision.ErrNoPoll) || errors.Is(err, decision.ErrInvalidOption) || errors.Is(err, decision.ErrPollOptionUnavailable) {
 			return r.Text(err.Error()).Send(ctx)
 		}
 		return err
 	}
 	return r.Text(prefix + formatPoll(view)).Send(ctx)
-}
-
-func parseVoteNumber(text string) (int, bool) {
-	if text == "" {
-		return 0, false
-	}
-	for i := 0; i < len(text); i++ {
-		if text[i] < '0' || text[i] > '9' {
-			return 0, false
-		}
-	}
-	number, err := strconv.Atoi(text)
-	return number, err == nil && number > 0
 }
 
 // parseBudget 将十进制元转换成整数分，不接受符号、指数或超过两位小数。

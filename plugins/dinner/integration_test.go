@@ -43,8 +43,8 @@ plugins:
 
 	base, stop := startBot(t, addr, config)
 	integrationInject(t, base, "/dinner 18")
-	integrationWaitSent(t, base, 1, "1. A [a]")
-	integrationInject(t, base, "/dinner 投票 1")
+	integrationWaitSent(t, base, 1, "A [a] — 0 票")
+	integrationInject(t, base, "/dinner 投票 a")
 	integrationWaitSent(t, base, 2, "[a] — 1 票")
 	integrationInject(t, base, "/dinner 推荐")
 	integrationWaitSent(t, base, 3, "今晚推荐：A [a]")

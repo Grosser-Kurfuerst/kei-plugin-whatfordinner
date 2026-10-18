@@ -10,8 +10,9 @@ func TestCatalogValidation(t *testing.T) {
 	for name, items := range map[string][]Option{
 		"duplicate":  {{ID: "a", Name: "A"}, {ID: "a", Name: "B"}},
 		"empty name": {{ID: "a"}}, "empty id": {{Name: "A"}},
-		"negative":  {{ID: "a", Name: "A", PriceCents: &negative}},
-		"empty tag": {{ID: "a", Name: "A", Tags: []string{" "}}},
+		"whitespace id": {{ID: "a b", Name: "A"}},
+		"negative":      {{ID: "a", Name: "A", PriceCents: &negative}},
+		"empty tag":     {{ID: "a", Name: "A", Tags: []string{" "}}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := New(items)
