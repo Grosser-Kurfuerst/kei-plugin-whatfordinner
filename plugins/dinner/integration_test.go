@@ -35,6 +35,15 @@ storage:
 plugins:
   dinner:
     enabled: true
+    tag_groups:
+    - name: 大类
+      tags: [中餐]
+    - name: 菜系
+      tags: [川菜]
+    - name: 品类
+      tags: [面食]
+    - name: 就餐形式
+      tags: [点餐]
     catalog:
       items:
       - {id: a, name: A, price_cents: 1800, enabled: true}

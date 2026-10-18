@@ -27,7 +27,7 @@ func setupPluginAt(t *testing.T, items []any, now func() time.Time) (*Plugin, bo
 	p := &Plugin{}
 	reg := bot.NewRecordingRegistrar()
 	storage := &testStorage{values: make(map[string][]byte)}
-	ctx := bot.WithPluginContext(context.Background(), bot.PluginContext{Storage: storage, Config: bot.NewConfig(map[string]any{"catalog": map[string]any{"items": items}})})
+	ctx := bot.WithPluginContext(context.Background(), bot.PluginContext{Storage: storage, Config: bot.NewConfig(map[string]any{"tag_groups": testTagGroups(), "catalog": map[string]any{"items": items}})})
 	if err := p.Setup(ctx, reg); err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +40,7 @@ func setupPluginAt(t *testing.T, items []any, now func() time.Time) (*Plugin, bo
 		t.Fatal(err)
 	}
 	p.service = service
-	p.polls = decision.NewPollService(service, state.New(storage))
+	p.polls = decision.NewPollService(service, state.New(storage), p.tags)
 	return p, rule.Handler, storage
 }
 
@@ -74,6 +74,26 @@ func TestCommands(t *testing.T) {
 	if text := invoke(t, h, &bot.User{ID: " "}); !strings.Contains(text, "无法识别") {
 		t.Fatal(text)
 	}
+	tagText := invoke(t, h, u, "标签")
+	for _, want := range []string{"支持的标签：", "大类：", "菜系：", "品类：", "就餐形式：", "川菜", "点餐"} {
+		if !strings.Contains(tagText, want) {
+			t.Fatalf("missing %q in %q", want, tagText)
+		}
+	}
+}
+
+func TestCatalogTagValidation(t *testing.T) {
+	p := &Plugin{}
+	reg := bot.NewRecordingRegistrar()
+	ctx := bot.WithPluginContext(context.Background(), bot.PluginContext{Config: bot.NewConfig(map[string]any{
+		"tag_groups": testTagGroups(),
+		"catalog": map[string]any{"items": []any{
+			map[string]any{"id": "a", "name": "A", "enabled": true, "tags": []string{"未配置"}},
+		}},
+	})})
+	if err := p.Setup(ctx, reg); err == nil || !strings.Contains(err.Error(), "未配置") {
+		t.Fatalf("expected tag validation error, got %v", err)
+	}
 }
 
 func TestEmptyCatalogAndInvalidSetup(t *testing.T) {
@@ -86,7 +106,7 @@ func TestEmptyCatalogAndInvalidSetup(t *testing.T) {
 	if err := p.Setup(context.Background(), reg); err == nil {
 		t.Fatal("expected missing context")
 	}
-	ctx := bot.WithPluginContext(context.Background(), bot.PluginContext{Config: bot.NewConfig(map[string]any{"catalog": map[string]any{"items": []any{map[string]any{"id": "a"}}}})})
+	ctx := bot.WithPluginContext(context.Background(), bot.PluginContext{Config: bot.NewConfig(map[string]any{"tag_groups": testTagGroups(), "catalog": map[string]any{"items": []any{map[string]any{"id": "a"}}}})})
 	if err := p.Setup(ctx, reg); err == nil {
 		t.Fatal("expected invalid catalog")
 	}
@@ -172,7 +192,7 @@ func TestHandlerStorageFailureDoesNotReplySuccess(t *testing.T) {
 	reg := bot.NewRecordingRegistrar()
 	failure := errors.New("storage failure")
 	storage := &testStorage{values: map[string][]byte{}, setErr: failure}
-	ctx := bot.WithPluginContext(context.Background(), bot.PluginContext{Storage: storage, Config: bot.NewConfig(map[string]any{"catalog": map[string]any{"items": []any{map[string]any{"id": "a", "name": "A", "enabled": true}}}})})
+	ctx := bot.WithPluginContext(context.Background(), bot.PluginContext{Storage: storage, Config: bot.NewConfig(map[string]any{"tag_groups": testTagGroups(), "catalog": map[string]any{"items": []any{map[string]any{"id": "a", "name": "A", "enabled": true}}}})})
 	if err := p.Setup(ctx, reg); err != nil {
 		t.Fatal(err)
 	}
@@ -227,7 +247,7 @@ func TestParseBudget(t *testing.T) {
 
 func TestPreferenceCommandsAndInvalidInput(t *testing.T) {
 	p, h := setupPlugin(t, []any{
-		map[string]any{"id": "a", "name": "牛肉面", "price_cents": 1800, "tags": []string{"牛肉"}, "enabled": true},
+		map[string]any{"id": "a", "name": "牛肉面", "price_cents": 1800, "tags": []string{"川菜"}, "enabled": true},
 		map[string]any{"id": "b", "name": "盖浇饭", "price_cents": 2000, "tags": []string{"米饭"}, "enabled": true},
 	})
 	u := &bot.User{ID: "pref"}
@@ -240,7 +260,7 @@ func TestPreferenceCommandsAndInvalidInput(t *testing.T) {
 	if text := invoke(t, h, u); !strings.Contains(text, "[a]") {
 		t.Fatal(text)
 	}
-	if text := invoke(t, h, u, "忌口", "牛肉", "牛肉"); !strings.Contains(text, "当前忌口：牛肉") || strings.Contains(text, "牛肉、牛肉") {
+	if text := invoke(t, h, u, "忌口", "川菜", "川菜"); !strings.Contains(text, "当前忌口：川菜") || strings.Contains(text, "川菜、川菜") {
 		t.Fatal(text)
 	}
 	if text := invoke(t, h, u); !strings.Contains(text, "暂无") {
@@ -254,6 +274,12 @@ func TestPreferenceCommandsAndInvalidInput(t *testing.T) {
 		t.Fatal(err)
 	}
 	first := invoke(t, h, u)
+	if text := invoke(t, h, u, "忌口", "不存在"); !strings.Contains(text, "标签不在当前词表中") {
+		t.Fatalf("unknown tag: %q", text)
+	}
+	if got := invoke(t, h, u); got != first {
+		t.Fatalf("unknown tag changed recommendation: %q", got)
+	}
 	for _, args := range [][]string{
 		{"预算"}, {"预算", "25"}, {"0"}, {"-1"}, {"text"}, {"1.001"}, {"18", "extra"},
 		{"投票"}, {"投票", "a", "extra"},
@@ -281,20 +307,22 @@ func TestPreferenceCommandsAndInvalidInput(t *testing.T) {
 	invoke(t, h, u, "推荐")
 	invoke(t, h, u, "已吃")
 	invoke(t, h, u, "不限")
-	invoke(t, h, u, "忌口", "牛肉")
+	invoke(t, h, u, "忌口", "川菜")
 	if text := invoke(t, h, u, "推荐"); !strings.Contains(text, "已吃") || !strings.Contains(text, "[a]") {
 		t.Fatal(text)
 	}
-	if text := invoke(t, h, u, "帮助"); !strings.Contains(text, "当前预算：不限") || !strings.Contains(text, "当前忌口：牛肉") {
+	if text := invoke(t, h, u, "帮助"); !strings.Contains(text, "当前预算：不限") || !strings.Contains(text, "当前忌口：川菜") {
 		t.Fatal(text)
 	}
 }
 
 func TestPreferenceHandlerStorageAndSendFailures(t *testing.T) {
-	_, h, storage := setupPluginAt(t, nil, testClock)
+	_, h, storage := setupPluginAt(t, []any{
+		map[string]any{"id": "a", "name": "牛肉面", "price_cents": 1800, "tags": []string{"川菜"}, "enabled": true},
+	}, testClock)
 	failure := errors.New("storage failure")
 	u := &bot.User{ID: "pref"}
-	for _, args := range [][]string{{"18.00"}, {"忌口", "牛肉"}, {"帮助"}} {
+	for _, args := range [][]string{{"18.00"}, {"忌口", "川菜"}, {"帮助"}} {
 		storage.getErr = failure
 		r := bot.NewNoopReply()
 		e := &bot.Event{Platform: "mock", BotID: "bot", Sender: u, Command: &bot.Command{Name: "dinner", Args: args}}

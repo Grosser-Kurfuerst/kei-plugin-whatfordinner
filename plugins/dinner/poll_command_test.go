@@ -12,7 +12,7 @@ import (
 func pollHandler(t *testing.T) (*testStorage, bot.Handler) {
 	t.Helper()
 	_, h, storage := setupPluginAt(t, []any{
-		map[string]any{"id": "a", "name": "A", "price_cents": 1800, "tags": []string{"牛肉"}, "enabled": true},
+		map[string]any{"id": "a", "name": "A", "price_cents": 1800, "tags": []string{"川菜"}, "enabled": true},
 		map[string]any{"id": "b", "name": "B", "price_cents": 2000, "enabled": true},
 	}, testClock)
 	return storage, h
@@ -77,7 +77,7 @@ func TestGroupPollCommandsAndPrivateIsolation(t *testing.T) {
 	if text := invokePoll(t, h, "u1", "g1", "18.00"); !strings.Contains(text, "[a] — 1 票") {
 		t.Fatal(text)
 	}
-	invokePoll(t, h, "u1", "g1", "忌口", "牛肉")
+	invokePoll(t, h, "u1", "g1", "忌口", "川菜")
 	if text := invokePoll(t, h, "u2", "g1"); !strings.Contains(text, "暂无可选项") {
 		t.Fatal(text)
 	}

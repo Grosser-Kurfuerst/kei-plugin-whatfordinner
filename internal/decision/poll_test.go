@@ -172,6 +172,62 @@ func TestPollFiltersAndResets(t *testing.T) {
 	}
 }
 
+type testTagSet map[string]bool
+
+func (s testTagSet) Has(tag string) bool { return s[tag] }
+
+func TestPollUsesConfiguredTagSet(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 10, 10, 10, 0, 0, 0, time.UTC)
+	items := []catalog.Option{{ID: "a", Name: "A", Enabled: true}}
+	polls := NewPollService(service(t, items, newTestStore(), &now), newTestPollStore(), testTagSet{"淮扬菜": true})
+	profile, err := polls.SetExcludedTags(ctx, group, []string{"淮扬菜"})
+	if err != nil || !reflect.DeepEqual(profile.ExcludedTags, []string{"淮扬菜"}) {
+		t.Fatalf("configured tag rejected: %+v %v", profile, err)
+	}
+	if _, err := polls.List(ctx, group, scope, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := polls.SetExcludedTags(ctx, group, []string{"不存在"}); !errors.Is(err, ErrUnknownTag) {
+		t.Fatalf("unknown tag accepted: %v", err)
+	}
+}
+
+func TestPollExcludedTagsNormalized(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 10, 10, 10, 0, 0, 0, time.UTC)
+	items := []catalog.Option{
+		{ID: "a", Name: "A", Tags: []string{"川菜"}, Enabled: true},
+		{ID: "b", Name: "B", Tags: []string{"火锅"}, Enabled: true},
+		{ID: "c", Name: "C", Enabled: true},
+	}
+	polls := NewPollService(service(t, items, newTestStore(), &now), newTestPollStore())
+	profile, err := polls.SetExcludedTags(ctx, group, []string{" 火锅 ", "川菜", "火锅", " 川菜 "})
+	if err != nil || !reflect.DeepEqual(profile.ExcludedTags, []string{"川菜", "火锅"}) {
+		t.Fatalf("tags not normalized: %+v %v", profile, err)
+	}
+	if _, err := polls.List(ctx, group, scope, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := polls.Vote(ctx, group, "u1", "c"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := polls.SetExcludedTags(ctx, group, []string{"火锅", "川菜"}); err != nil {
+		t.Fatal(err)
+	}
+	view, err := polls.List(ctx, group, scope, nil)
+	if err != nil || view.Voters != 1 {
+		t.Fatalf("same tags in another order reset the round: %+v %v", view, err)
+	}
+	if _, err := polls.SetExcludedTags(ctx, group, []string{"不存在"}); !errors.Is(err, ErrUnknownTag) {
+		t.Fatalf("unknown tag accepted: %v", err)
+	}
+	view, err = polls.List(ctx, group, scope, nil)
+	if err != nil || view.Voters != 1 {
+		t.Fatalf("unknown tag changed the round: %+v %v", view, err)
+	}
+}
+
 func TestPollFiveWeightedDistinctCandidates(t *testing.T) {
 	ctx := context.Background()
 	now := time.Date(2026, 10, 10, 10, 0, 0, 0, time.UTC)

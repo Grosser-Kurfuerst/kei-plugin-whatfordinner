@@ -66,15 +66,25 @@ var (
 	ErrUnknownTag            = errors.New("标签不在当前词表中，请发送 /dinner 标签 查看支持的标签")
 )
 
-// PollService 串行处理共享列表的创建和投票，个人服务只提供清单与抽选规则。
+// TagSet 是 /dinner 忌口 接受的标签集合。
+type TagSet interface {
+	Has(string) bool
+}
+
+// PollService 串行处理会话列表、投票与已吃记录，个人服务只提供清单与抽选规则。
 type PollService struct {
 	mu       sync.Mutex
 	personal *Service
 	store    PollStore
+	tags     TagSet
 }
 
-func NewPollService(personal *Service, store PollStore) *PollService {
-	return &PollService{personal: personal, store: store}
+func NewPollService(personal *Service, store PollStore, tags ...TagSet) *PollService {
+	var tagSet TagSet
+	if len(tags) > 0 {
+		tagSet = tags[0]
+	}
+	return &PollService{personal: personal, store: store, tags: tagSet}
 }
 
 func (s *PollService) load(ctx context.Context, scope PollScope) (PollState, bool, error) {
@@ -299,6 +309,15 @@ func (s *PollService) SetExcludedTags(ctx context.Context, scope PollScope, tags
 	if err != nil {
 		return Profile{}, err
 	}
+	hasTag := s.personal.catalog.HasTag
+	if s.tags != nil {
+		hasTag = s.tags.Has
+	}
+	for _, tag := range unique {
+		if !hasTag(tag) {
+			return Profile{}, fmt.Errorf("%w：%s", ErrUnknownTag, tag)
+		}
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	state, _, err := s.load(ctx, scope)
@@ -319,13 +338,15 @@ func (s *PollService) SetExcludedTags(ctx context.Context, scope PollScope, tags
 func uniqueTags(tags []string) ([]string, error) {
 	unique := make([]string, 0, len(tags))
 	for _, tag := range tags {
-		if strings.TrimSpace(tag) == "" {
+		tag = strings.TrimSpace(tag)
+		if tag == "" {
 			return nil, fmt.Errorf("忌口标签不能为空")
 		}
 		if !slices.Contains(unique, tag) {
 			unique = append(unique, tag)
 		}
 	}
+	slices.Sort(unique)
 	return unique, nil
 }
 

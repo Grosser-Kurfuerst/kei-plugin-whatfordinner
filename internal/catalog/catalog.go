@@ -3,6 +3,7 @@ package catalog
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -42,7 +43,8 @@ func New(items []Option) (*Catalog, error) {
 		tags := make([]string, 0, len(item.Tags))
 		seen := make(map[string]bool)
 		for _, tag := range item.Tags {
-			if strings.TrimSpace(tag) == "" {
+			tag = strings.TrimSpace(tag)
+			if tag == "" {
 				return nil, fmt.Errorf("catalog.items[%d] (%s): 标签不能为空", i, item.ID)
 			}
 			if !seen[tag] {
@@ -55,6 +57,16 @@ func New(items []Option) (*Catalog, error) {
 		c.items = append(c.items, item)
 	}
 	return c, nil
+}
+
+// HasTag 报告清单中是否有任一选项使用该标签。
+func (c *Catalog) HasTag(tag string) bool {
+	for _, item := range c.items {
+		if slices.Contains(item.Tags, tag) {
+			return true
+		}
+	}
+	return false
 }
 
 // List 返回清单副本，包含停用项。

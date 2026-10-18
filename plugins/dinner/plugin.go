@@ -16,6 +16,7 @@ import (
 // Plugin 是独立的晚饭插件实例。
 type Plugin struct {
 	catalog *catalog.Catalog
+	tags    *tagTaxonomy
 	service *decision.Service
 	polls   *decision.PollService
 }
@@ -34,18 +35,27 @@ func (p *Plugin) Setup(ctx context.Context, reg bot.Registrar) error {
 		return fmt.Errorf("dinner: missing plugin context")
 	}
 	var config struct {
-		Catalog struct {
+		TagGroups []tagGroup `json:"tag_groups"`
+		Catalog   struct {
 			Items []catalog.Option `json:"items"`
 		} `json:"catalog"`
 	}
 	if err := pc.Config.Unmarshal(&config); err != nil {
 		return fmt.Errorf("dinner config: %w", err)
 	}
+	tags, err := newTagTaxonomy(config.TagGroups)
+	if err != nil {
+		return fmt.Errorf("dinner tags: %w", err)
+	}
 	c, err := catalog.New(config.Catalog.Items)
 	if err != nil {
 		return err
 	}
+	if err := tags.validateOptions(c.List()); err != nil {
+		return err
+	}
 	p.catalog = c
+	p.tags = tags
 	if pc.Storage == nil {
 		return fmt.Errorf("dinner: missing storage")
 	}
@@ -55,7 +65,7 @@ func (p *Plugin) Setup(ctx context.Context, reg bot.Registrar) error {
 		return fmt.Errorf("dinner service: %w", err)
 	}
 	p.service = service
-	p.polls = decision.NewPollService(service, store)
+	p.polls = decision.NewPollService(service, store, tags)
 	reg.OnCommand("dinner", p.handle, bot.WithID("dinner:command"))
 	return nil
 }

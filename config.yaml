@@ -1,5 +1,7 @@
-# 餐厅清单更新于 2026-10-10；来源、距离与价格口径见 docs/restaurant-sources.md。
+# 餐厅清单更新于 2026-10-19；来源、距离与价格口径见 docs/restaurant-sources.md。
 # price_cents 为公开来源参考人均（分）；未核实的价格省略，不参与有限预算抽选。
+# 标签分为大类、菜系、品类、就餐形式四层；词表和规则见 docs/tags.md。
+# tag_groups 是启动校验的唯一来源；catalog.items[].tags 只能使用这里声明的值。
 bots:
 - name: mock-main
   adapter: mock
@@ -10,97 +12,166 @@ storage:
 plugins:
   dinner:
     enabled: true
+    tag_groups:
+    - name: 大类
+      tags:
+      - 中餐
+      - 西餐
+      - 亚洲菜
+      - 其他
+    - name: 菜系
+      tags:
+      - 川菜
+      - 淮扬菜
+      - 粤菜
+      - 湘菜
+      - 鲁菜
+      - 浙江菜
+      - 闽菜
+      - 徽菜
+      - 西北菜
+      - 东北菜
+      - 云贵菜
+      - 本帮菜
+      - 新疆菜
+      - 意大利菜
+      - 法国菜
+      - 美式菜
+      - 墨西哥菜
+      - 地中海菜
+      - 韩国料理
+      - 日本料理
+      - 泰国菜
+      - 越南菜
+      - 印度菜
+      - 东南亚菜
+    - name: 品类
+      tags:
+      - 火锅
+      - 烤肉
+      - 面食
+      - 披萨
+      - 炸鸡
+      - 汉堡
+      - 寿司
+      - 烧烤
+      - 小吃
+      - 轻食
+      - 麻辣烫
+      - 米线
+      - 饺子
+      - 烧腊
+      - 米饭
+    - name: 就餐形式
+      tags:
+      - 自助餐
+      - 点餐
     catalog:
       items:
       - id: nanjing-dapaidang-zifeng
         name: 南京大牌档(紫峰店)
         venue: 南京市鼓楼区中山北路6号紫峰购物中心5楼A03
         price_cents: 7300
-        tags: []
+        tags:
+        - 中餐
+        - 点餐
         enabled: true
       - id: bopeye
         name: Bopeye 80'波派炸鸡&啤酒
         venue: 南京市鼓楼区管家桥九号余斯达广场二楼
         price_cents: 7000
         tags:
-        - 外国餐厅
+        - 亚洲菜
         - 韩国料理
+        - 炸鸡
+        - 点餐
         enabled: true
       - id: benjia
         name: 本家韩国料理(南京店)
         venue: 南京市鼓楼区汉中路108号金轮大厦B1楼
         price_cents: 14300
         tags:
-        - 外国菜
-        - 本家韩国料理
+        - 亚洲菜
+        - 韩国料理
+        - 烤肉
+        - 点餐
         enabled: true
       - id: fuxiaojie-wuyue
         name: 付小姐在成都(吾悦广场店)
         venue: 南京市鼓楼区湖北路51号吾悦广场负一层B1015(星巴克入口处楼下)
         price_cents: 7500
         tags:
-        - 中餐厅
-        - 四川菜(川菜)
+        - 中餐
+        - 川菜
+        - 点餐
         enabled: true
       - id: chengdu-wawa
         name: 成都娃娃花园餐厅 Garden Restaurant & Lounge
         venue: 南京市鼓楼区上海路南秀村18号爱尔兰吧对面
         price_cents: 11700
         tags:
-        - 中餐厅
-        - 四川菜(川菜)
+        - 中餐
+        - 川菜
+        - 点餐
         enabled: true
       - id: jiangnanli-wuyue
         name: 江南里(吾悦广场店)
         venue: 南京市鼓楼区湖北路51号吾悦广场5层
         price_cents: 8000
         tags:
-        - 中餐厅
+        - 中餐
         - 浙江菜
+        - 点餐
         enabled: true
       - id: shenye-shitang
         name: 深夜屋里食堂-深夜食堂
         venue: 南京市鼓楼区中山北路215号中商万豪大楼102室(近温莎KTV)
         price_cents: 12900
         tags:
-        - 外国餐厅
+        - 亚洲菜
+        - 点餐
         enabled: true
       - id: huaqianzui
         name: 花千醉小酒馆(金茂汇店)
         venue: 南京市鼓楼区中央路201号金茂汇F7
         price_cents: 8400
         tags:
-        - 中餐厅
+        - 中餐
+        - 点餐
         enabled: true
       - id: haidilao-longjiang
         name: 海底捞火锅
         venue: 南京市鼓楼区龙园西路58号黄河大厦2楼
         price_cents: 13900
         tags:
-        - 海底捞
         - 中餐
         - 火锅
+        - 点餐
         enabled: true
       - id: jinjiamen-longjiang
         name: 晋家门
         venue: 南京市鼓楼区草场门大街99号新城市广场4楼
         price_cents: 7000
         tags:
-        - 中餐厅
+        - 中餐
         - 西北菜
+        - 点餐
         enabled: true
       - id: huawei-longjiang
         name: 花味烤肉
         venue: 南京市鼓楼区龙江新城市广场B1楼
         price_cents: 7600
         tags:
-        - 外国餐厅
+        - 亚洲菜
         - 韩国料理
+        - 烤肉
+        - 点餐
         enabled: true
       - id: liulang-paopao-wuyue
         name: 流浪泡泡·自助烤肉(鼓楼吾悦广场店)
         venue: 南京市鼓楼区湖北路51号吾悦广场（楼层待核验）
         tags:
+        - 中餐
         - 烤肉
         - 自助餐
         enabled: true
@@ -109,6 +180,7 @@ plugins:
         venue: 南京市秦淮区中山南路7号中央商场（楼层待核验）
         price_cents: 5800
         tags:
+        - 中餐
         - 火锅
         - 自助餐
         enabled: true
@@ -116,12 +188,15 @@ plugins:
         name: 欢乐牧场自助餐厅(马台街店)
         venue: 南京市鼓楼区马台街99号BHG食品超市4楼
         tags:
+        - 中餐
+        - 西餐
         - 自助餐
         enabled: true
       - id: wuliao-aishang
         name: 無燎鲜货火锅自助(艾尚天地店)
         venue: 南京市玄武区中山路100号艾尚天地A座（楼层待核验）
         tags:
+        - 中餐
         - 火锅
         - 自助餐
         enabled: true
@@ -130,6 +205,7 @@ plugins:
         venue: 南京市鼓楼区湖北路51号吾悦广场（楼层待核验）
         price_cents: 6800
         tags:
+        - 西餐
         - 披萨
         - 自助餐
         enabled: true
@@ -140,18 +216,24 @@ plugins:
         tags:
         - 西餐
         - 意大利菜
+        - 点餐
         enabled: true
       - id: baichuan-qingdaolu
         name: 摆川饭堂·豆花饭·坝坝席(南大青岛路店)
         venue: 南京市鼓楼区青岛路（门牌待核验）
         price_cents: 5400
         tags:
+        - 中餐
         - 川菜
+        - 点餐
         enabled: true
       - id: yibin-qingdaolu
         name: 肖记四川宜宾燃面(青岛路店)
         venue: 南京市鼓楼区汉口西路158号（近山阴路，携程公开地址）
         price_cents: 2500
         tags:
+        - 中餐
+        - 川菜
         - 面食
+        - 点餐
         enabled: true

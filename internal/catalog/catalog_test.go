@@ -28,7 +28,7 @@ func TestCatalogValidation(t *testing.T) {
 
 func TestCatalogReadOnlyAndOrder(t *testing.T) {
 	price := int64(1800)
-	input := []Option{{ID: "b", Name: "B", PriceCents: &price, Tags: []string{"面食", "面食"}}, {ID: "a", Name: "A"}}
+	input := []Option{{ID: "b", Name: "B", PriceCents: &price, Tags: []string{" 面食 ", "面食"}}, {ID: "a", Name: "A"}}
 	c, err := New(input)
 	if err != nil {
 		t.Fatal(err)

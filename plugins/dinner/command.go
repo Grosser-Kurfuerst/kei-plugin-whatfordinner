@@ -21,6 +21,9 @@ func (p *Plugin) handle(ctx context.Context, e *bot.Event, r bot.Reply) error {
 	if len(args) == 1 && args[0] == "候选" {
 		return r.Text(formatCatalog(p.catalog.List())).Send(ctx)
 	}
+	if len(args) == 1 && args[0] == "标签" {
+		return r.Text(formatTags(p.tags.allGroups())).Send(ctx)
+	}
 	scope := decision.Scope{Platform: e.Platform, BotID: e.BotID, UserID: e.Sender.ID}
 	pollScope, ok := pollScopeFor(e)
 	if !ok {
@@ -65,6 +68,9 @@ func (p *Plugin) handle(ctx context.Context, e *bot.Event, r bot.Reply) error {
 		}
 		profile, err := p.polls.SetExcludedTags(ctx, pollScope, tags)
 		if err != nil {
+			if errors.Is(err, decision.ErrUnknownTag) {
+				return r.Text(err.Error()).Send(ctx)
+			}
 			return err
 		}
 		return r.Text("忌口已设置。\n" + formatProfile(profile)).Send(ctx)
