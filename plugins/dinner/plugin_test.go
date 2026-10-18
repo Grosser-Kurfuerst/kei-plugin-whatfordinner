@@ -266,6 +266,14 @@ func TestPreferenceCommandsAndInvalidInput(t *testing.T) {
 			t.Fatalf("invalid %v changed recommendation: %q", args, got)
 		}
 	}
+	for _, args := range [][]string{{"投票", "0"}, {"投票", "-1"}, {"投票", "1.1"}, {"投票", "+1"}, {"已吃", "extra"}} {
+		if text := invoke(t, h, u, args...); !strings.Contains(text, "id 不在当前列表中") {
+			t.Fatalf("unknown id %v: %q", args, text)
+		}
+		if got := invoke(t, h, u); got != first {
+			t.Fatalf("unknown id %v changed recommendation: %q", args, got)
+		}
+	}
 	after, err := p.polls.Profile(context.Background(), personal)
 	if err != nil || after.BudgetCents != before.BudgetCents || len(after.ExcludedTags) != 0 {
 		t.Fatalf("invalid input changed profile: %+v %v", after, err)

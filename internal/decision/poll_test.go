@@ -181,22 +181,23 @@ func TestPollFiveWeightedDistinctCandidates(t *testing.T) {
 		id := fmt.Sprintf("%c", 'a'+i)
 		items = append(items, catalog.Option{ID: id, Name: id, Enabled: true})
 	}
-	if err := personalStore.Save(ctx, scope, UserState{History: []MealRecord{{Date: "2026-10-09", Option: OptionSnapshot{ID: "a"}}}}); err != nil {
+	pollStore := newTestPollStore()
+	if err := pollStore.SavePoll(ctx, group, PollState{Date: "2026-10-10", Meals: []SharedMeal{{UserID: "u1", MealRecord: MealRecord{Date: "2026-10-09", Option: OptionSnapshot{ID: "a"}}}}}); err != nil {
 		t.Fatal(err)
 	}
 	personal := service(t, items, personalStore, &now)
 	personal.randomFloat = func() float64 { return 0.2 }
-	polls := NewPollService(personal, newTestPollStore())
+	polls := NewPollService(personal, pollStore)
 	view, err := polls.List(ctx, group, scope, nil)
 	if err != nil || len(view.Entries) != 5 {
 		t.Fatalf("%+v %v", view, err)
 	}
 	for i, entry := range view.Entries {
 		if entry.Option.ID != fmt.Sprintf("%c", 'b'+i) {
-			t.Fatalf("history weight or sampling without replacement not applied: %+v", view)
+			t.Fatalf("shared history weight or sampling without replacement not applied: %+v", view)
 		}
 	}
-	if personalStore.writes != 1 {
+	if personalStore.writes != 0 {
 		t.Fatal("list generation wrote a personal recommendation or meal")
 	}
 }
@@ -374,4 +375,116 @@ func TestPollRecommendationsUseConversationProfile(t *testing.T) {
 	if _, err := polls.RecommendFor(ctx, group, scope); !errors.Is(err, ErrNoCandidates) {
 		t.Fatal(err)
 	}
+}
+
+func TestPollEatenRecordsSharedHistory(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 10, 10, 10, 0, 0, 0, time.UTC)
+	price := int64(100)
+	items := []catalog.Option{
+		{ID: "a", Name: "A", PriceCents: &price, Enabled: true},
+		{ID: "b", Name: "B", PriceCents: &price, Enabled: true},
+		{ID: "c", Name: "C", PriceCents: &price, Enabled: true},
+	}
+	personalStore, pollStore := newTestStore(), newTestPollStore()
+	personal := service(t, items, personalStore, &now)
+	personal.randomFloat = func() float64 { return 0.2 }
+	polls := NewPollService(personal, pollStore)
+	id := "a"
+	if _, err := polls.MarkEaten(ctx, group, scope, &id); !errors.Is(err, ErrNoPoll) {
+		t.Fatal(err)
+	}
+	if _, err := polls.List(ctx, group, scope, nil); err != nil {
+		t.Fatal(err)
+	}
+	result, err := polls.MarkEaten(ctx, group, scope, &id)
+	if err != nil || result.Option.ID != "a" || !result.Eaten {
+		t.Fatalf("%+v %v", result, err)
+	}
+	history, err := personal.History(ctx, scope)
+	if err != nil || len(history) != 1 || history[0].Option.ID != "a" {
+		t.Fatalf("personal history = %+v %v", history, err)
+	}
+	saved, err := pollStore.LoadPoll(ctx, group)
+	if err != nil || len(saved.Meals) != 1 || saved.Meals[0].UserID != "u1" || saved.Meals[0].Option.ID != "a" {
+		t.Fatalf("shared history = %+v %v", saved.Meals, err)
+	}
+	if _, err := polls.MarkEaten(ctx, group, scope, &id); err != nil {
+		t.Fatal(err)
+	}
+	saved, _ = pollStore.LoadPoll(ctx, group)
+	if len(saved.Meals) != 1 {
+		t.Fatal("duplicate shared meal")
+	}
+	other := "b"
+	if _, err := polls.MarkEaten(ctx, group, scope, &other); !errors.Is(err, ErrAlreadyEaten) {
+		t.Fatal(err)
+	}
+	saved, _ = pollStore.LoadPoll(ctx, group)
+	if len(saved.Meals) != 1 {
+		t.Fatal("rejected meal changed shared history")
+	}
+	// A new day's list uses the shared meal for weighting instead of the initiator's history.
+	now = time.Date(2026, 10, 11, 10, 0, 0, 0, time.UTC)
+	budget := int64(1000)
+	view, err := polls.List(ctx, group, scope, &budget)
+	if err != nil || len(view.Entries) != 3 || view.Entries[0].Option.ID != "b" {
+		t.Fatalf("shared history not used for weighting: %+v %v", view, err)
+	}
+	// No-arg eaten in a shared conversation also records the personal recommendation.
+	otherScope := scope
+	otherScope.UserID = "u2"
+	recommendation, err := polls.RecommendFor(ctx, group, otherScope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := polls.MarkEaten(ctx, group, otherScope, nil); err != nil {
+		t.Fatal(err)
+	}
+	saved, _ = pollStore.LoadPoll(ctx, group)
+	if len(saved.Meals) != 2 || saved.Meals[1].UserID != "u2" || saved.Meals[1].Option.ID != recommendation.Option.ID {
+		t.Fatalf("no-arg shared meal = %+v", saved.Meals)
+	}
+	// Private conversations keep using personal history only.
+	private := PollScope{Platform: "mock", BotID: "bot", Kind: "private", ID: "u3"}
+	if _, err := polls.List(ctx, private, privateScope(scope, "u3"), nil); err != nil {
+		t.Fatal(err)
+	}
+	privateID := "a"
+	if _, err := polls.MarkEaten(ctx, private, privateScope(scope, "u3"), &privateID); err != nil {
+		t.Fatal(err)
+	}
+	saved, _ = pollStore.LoadPoll(ctx, private)
+	if len(saved.Meals) != 0 {
+		t.Fatal("private conversation wrote shared history")
+	}
+}
+
+func TestPollEatenUsesConversationProfile(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 10, 10, 10, 0, 0, 0, time.UTC)
+	price := int64(100)
+	personalStore := newTestStore()
+	if err := personalStore.Save(ctx, scope, UserState{Profile: Profile{BudgetCents: 50}}); err != nil {
+		t.Fatal(err)
+	}
+	personal := service(t, []catalog.Option{{ID: "a", Name: "A", PriceCents: &price, Enabled: true}}, personalStore, &now)
+	polls := NewPollService(personal, newTestPollStore())
+	budget := int64(1000)
+	if _, err := polls.List(ctx, group, scope, &budget); err != nil {
+		t.Fatal(err)
+	}
+	id := "a"
+	if _, err := polls.MarkEaten(ctx, group, scope, &id); err != nil {
+		t.Fatal(err)
+	}
+	state, err := personalStore.Load(ctx, scope)
+	if err != nil || state.Profile.BudgetCents != 1000 || !state.Daily.Eaten || state.Daily.Current == nil || state.Daily.Current.ID != "a" {
+		t.Fatalf("conversation profile not used for meal: %+v %v", state, err)
+	}
+}
+
+func privateScope(base Scope, userID string) Scope {
+	base.UserID = userID
+	return base
 }

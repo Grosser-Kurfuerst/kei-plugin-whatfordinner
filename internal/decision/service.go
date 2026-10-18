@@ -122,7 +122,7 @@ func (s *Service) choose(ctx context.Context, scope Scope, reroll bool, profile 
 	return makeResult(current, state.History, now, false), nil
 }
 
-// MarkEaten 将当前选项和已吃状态一次保存，重复调用不追加记录。
+// MarkEaten 将当前个人推荐和已吃状态一次保存，重复调用不追加记录。
 // 校验使用生成当前推荐时的条件快照，避免会话设置变化后拒绝刚生成的推荐。
 func (s *Service) MarkEaten(ctx context.Context, scope Scope) (Recommendation, error) {
 	s.mu.Lock()
@@ -138,11 +138,34 @@ func (s *Service) MarkEaten(ctx context.Context, scope Scope) (Recommendation, e
 	if state.Daily.Eaten {
 		return makeResult(*state.Daily.Current, state.History, now, true), nil
 	}
-	option, ok := s.catalog.Find(state.Daily.Current.ID)
-	if !ok || !matches(option, state.Profile) {
+	return s.markEaten(ctx, scope, state, *state.Daily.Current, state.Profile, now)
+}
+
+// MarkEatenOption 将指定选项记录为实际用餐；选项按调用方给出的会话条件校验并保存为个人快照。
+func (s *Service) MarkEatenOption(ctx context.Context, scope Scope, option OptionSnapshot, profile Profile) (Recommendation, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := s.now().In(s.location)
+	state, err := s.load(ctx, scope, now)
+	if err != nil {
+		return Recommendation{}, err
+	}
+	if state.Daily.Eaten {
+		if state.Daily.Current != nil && state.Daily.Current.ID == option.ID {
+			return makeResult(*state.Daily.Current, state.History, now, true), nil
+		}
+		return Recommendation{}, ErrAlreadyEaten
+	}
+	return s.markEaten(ctx, scope, state, option, profile, now)
+}
+
+func (s *Service) markEaten(ctx context.Context, scope Scope, state UserState, option OptionSnapshot, profile Profile, now time.Time) (Recommendation, error) {
+	catalogOption, ok := s.catalog.Find(option.ID)
+	if !ok || !matches(catalogOption, profile) {
 		return Recommendation{}, ErrCurrentUnavailable
 	}
-	current := snapshot(option)
+	current := snapshot(catalogOption)
+	state.Profile = Profile{BudgetCents: profile.BudgetCents, ExcludedTags: slices.Clone(profile.ExcludedTags)}
 	state.Daily.Current = &current
 	state.Daily.Eaten = true
 	state.History = append(state.History, MealRecord{Date: state.Daily.Date, Option: current, EatenAt: now.UTC()})
@@ -181,7 +204,7 @@ func (s *Service) candidates(profile Profile, history []MealRecord, now time.Tim
 // MaxPollOptions 是每轮投票列表的最大候选数。
 const MaxPollOptions = 5
 
-// suggest 为新投票列表抽选至多 MaxPollOptions 项，使用发起人的实际用餐历史，不写个人状态。
+// suggest 使用发起人的个人用餐历史为新列表抽选至多 MaxPollOptions 项，不写个人状态。
 func (s *Service) suggest(ctx context.Context, scope Scope, profile Profile) ([]OptionSnapshot, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -190,7 +213,21 @@ func (s *Service) suggest(ctx context.Context, scope Scope, profile Profile) ([]
 	if err != nil {
 		return nil, err
 	}
-	items := s.candidates(profile, state.History, now)
+	return s.suggestWithHistory(profile, state.History, now)
+}
+
+// suggestShared 使用会话共享的已吃历史为新列表抽选，不写个人状态。
+func (s *Service) suggestShared(ctx context.Context, profile Profile, history []MealRecord) ([]OptionSnapshot, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return s.suggestWithHistory(profile, history, s.now().In(s.location))
+}
+
+func (s *Service) suggestWithHistory(profile Profile, history []MealRecord, now time.Time) ([]OptionSnapshot, error) {
+	items := s.candidates(profile, history, now)
 	var result []OptionSnapshot
 	for len(items) > 0 && len(result) < MaxPollOptions {
 		selected, err := Pick(items, s.randomFloat())

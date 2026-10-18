@@ -85,12 +85,14 @@ func (p *Plugin) handle(ctx context.Context, e *bot.Event, r bot.Reply) error {
 			result, err = p.polls.RerollFor(ctx, pollScope, scope)
 		}
 	} else if len(args) == 1 && args[0] == "已吃" {
-		result, err = p.service.MarkEaten(ctx, scope)
+		result, err = p.polls.MarkEaten(ctx, pollScope, scope, nil)
+	} else if len(args) == 2 && args[0] == "已吃" && strings.TrimSpace(args[1]) != "" {
+		result, err = p.polls.MarkEaten(ctx, pollScope, scope, &args[1])
 	} else {
 		return r.Text(helpText()).Send(ctx)
 	}
 	if err != nil {
-		if errors.Is(err, decision.ErrNoCandidates) || errors.Is(err, decision.ErrRoundExhausted) || errors.Is(err, decision.ErrCurrentUnavailable) || errors.Is(err, decision.ErrNoCurrent) || errors.Is(err, decision.ErrAlreadyEaten) {
+		if errors.Is(err, decision.ErrNoCandidates) || errors.Is(err, decision.ErrRoundExhausted) || errors.Is(err, decision.ErrCurrentUnavailable) || errors.Is(err, decision.ErrNoCurrent) || errors.Is(err, decision.ErrAlreadyEaten) || errors.Is(err, decision.ErrNoPoll) || errors.Is(err, decision.ErrInvalidOption) || errors.Is(err, decision.ErrPollOptionUnavailable) {
 			return r.Text(err.Error()).Send(ctx)
 		}
 		return err

@@ -18,7 +18,7 @@ func TestPollRoundTripAndScopeIsolation(t *testing.T) {
 	if err != nil || len(empty.Options) != 0 || len(empty.Ballots) != 0 {
 		t.Fatalf("%+v %v", empty, err)
 	}
-	value := decision.PollState{Date: "2026-10-10", Profile: decision.Profile{BudgetCents: 2500, ExcludedTags: []string{"辣"}}, Options: []decision.OptionSnapshot{{ID: "a", Name: "A"}, {ID: "b", Name: "B"}}, Ballots: map[string]string{"u1": "b", "u2": "b"}}
+	value := decision.PollState{Date: "2026-10-10", Profile: decision.Profile{BudgetCents: 2500, ExcludedTags: []string{"辣"}}, Options: []decision.OptionSnapshot{{ID: "a", Name: "A"}, {ID: "b", Name: "B"}}, Ballots: map[string]string{"u1": "b", "u2": "b"}, Meals: []decision.SharedMeal{{UserID: "u1", MealRecord: decision.MealRecord{Date: "2026-10-09", Option: decision.OptionSnapshot{ID: "a", Name: "A"}}}}}
 	if err := store.SavePoll(ctx, scope, value); err != nil {
 		t.Fatal(err)
 	}

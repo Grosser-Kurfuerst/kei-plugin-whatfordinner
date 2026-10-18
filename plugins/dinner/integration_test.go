@@ -48,14 +48,20 @@ plugins:
 	integrationWaitSent(t, base, 2, "[a] — 1 票")
 	integrationInject(t, base, "/dinner 推荐")
 	integrationWaitSent(t, base, 3, "今晚推荐：A [a]")
+	integrationInject(t, base, "/dinner 已吃 a")
+	integrationWaitSent(t, base, 4, "今天已吃并记录：A [a]")
+	integrationInject(t, base, "/dinner 历史")
+	integrationWaitSent(t, base, 5, "A [a]")
 	stop()
 
 	base, stop = startBot(t, addr, config)
 	defer stop()
 	integrationInject(t, base, "/dinner")
 	integrationWaitSent(t, base, 1, "[a] — 1 票")
+	integrationInject(t, base, "/dinner 历史")
+	integrationWaitSent(t, base, 2, "A [a]")
 	integrationInject(t, base, "/dinner 推荐")
-	integrationWaitSent(t, base, 2, "今晚推荐：A [a]")
+	integrationWaitSent(t, base, 3, "今天已吃并记录：A [a]")
 }
 
 func freeAddr(t *testing.T) string {
