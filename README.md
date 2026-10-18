@@ -17,31 +17,33 @@ KEI_STORAGE_DSN=/tmp/whatfordinner.sqlite CGO_ENABLED=1 go run ./cmd/bot -config
 ```sh
 curl -s http://127.0.0.1:18080/inject \
   -H 'Content-Type: application/json' \
-  -d '{"text":"/dinner","user_id":"u1","kind":"group","channel_id":"g1"}'
+  -d '{"text":"/dinner 25","user_id":"u1","kind":"group","channel_id":"g1"}'
 
 curl -s http://127.0.0.1:18080/inject \
   -H 'Content-Type: application/json' \
-  -d '{"text":"/dinner 投票 1","user_id":"u1","kind":"group","channel_id":"g1"}'
+  -d '{"text":"/dinner 投票 yibin-qingdaolu","user_id":"u1","kind":"group","channel_id":"g1"}'
 
 curl -s http://127.0.0.1:18080/sent
 ```
 
-`/inject` 返回接收确认，机器人回复稍后写入 `/sent`；将 `user_id` 改为 `u2` 可体验多人投票。数据库路径可按需修改，使用相同路径重启会恢复当天列表和选票。
+`/inject` 返回接收确认，机器人回复稍后写入 `/sent`；将 `user_id` 改为 `u2` 可体验多人投票。数据库路径可按需修改，使用相同路径重启会恢复当天列表、选票和已吃历史。
 
 ## 常用命令
 
 | 命令 | 说明 |
 |---|---|
-| `/dinner` | 查看今日列表，最多五项，显示编号和票数 |
+| `/dinner` | 查看今日列表，最多五项，显示餐厅 id 和票数 |
 | `/dinner 25`、`/dinner 不限` | 设置人均预算或取消限制，并返回列表 |
-| `/dinner 投票 1` | 投给编号 1，返回更新后的列表和票数 |
+| `/dinner 投票 <id>` | 投给列表中的餐厅 id，返回更新后的列表和票数 |
 | `/dinner 推荐` | 获取个人随机推荐 |
 | `/dinner 换一个` | 更换个人推荐 |
-| `/dinner 已吃`、`/dinner 历史` | 记录实际用餐、查看个人历史 |
-| `/dinner 忌口 火锅`、`/dinner 忌口 清空` | 设置或清除排除标签 |
+| `/dinner 已吃`、`/dinner 已吃 <id>` | 记录个人推荐，或记录列表中指定 id 的餐厅 |
+| `/dinner 历史` | 查看个人已吃历史 |
+| `/dinner 忌口 火锅`、`/dinner 忌口 清空` | 设置或清除排除的菜系/类别标签 |
+| `/dinner 标签` | 按大类、菜系、品类、就餐形式查看支持的标签 |
 | `/dinner 候选`、`/dinner 帮助` | 查看完整清单、命令帮助 |
 
-同一群或频道当天共享列表、预算和忌口；私聊按用户独立。每人一票，可改投。修改预算或忌口会重开列表并清空选票，重复查询保留选票；每天按上海时区零点换日。投票不会自动记录为“已吃”。
+同一群或频道当天共享列表、预算、忌口和已吃历史；私聊按用户独立。每人一票，按餐厅 id 投票，可改投。修改预算或忌口会重开列表并清空选票，重复查询保留选票；每天按上海时区零点换日。投票不会自动记录为“已吃”，需要手动发送 `/dinner 已吃 <id>`。
 
 ## 接入已有 kei 程序
 
@@ -65,8 +67,8 @@ opts.Plugins = append(opts.Plugins, &dinner.Plugin{})
 
 ## 维护餐厅清单
 
-编辑 [config.yaml](config.yaml) 的 `plugins.dinner.catalog.items` 后重启。餐厅 `id` 保持唯一、稳定；`price_cents` 单位为分，未知时省略；`enabled: false` 可停用。价格未知的餐厅只参与不限预算的推荐，忌口按标签精确匹配。
+编辑 [config.yaml](config.yaml) 的 `plugins.dinner.tag_groups` 和 `plugins.dinner.catalog.items` 后重启。`tag_groups` 固定为 `大类`、`菜系`、`品类`、`就餐形式` 四层；餐厅标签只能使用其中声明的值，否则启动失败。餐厅 `id` 保持唯一、稳定；`price_cents` 单位为分，未知时省略；`enabled: false` 可停用。价格未知的餐厅只参与不限预算的推荐，忌口按标签精确匹配，不推断配料、辣度或过敏原；可用标签见 `/dinner 标签`。
 
 当前内置 19 家南大鼓楼校区周边候选餐厅，比格和流浪泡泡均使用鼓楼吾悦广场店。价格为公开来源参考值，地点及价格核验情况见 [餐厅来源说明](docs/restaurant-sources.md)。
 
-更多说明：[完整使用指南](docs/usage.md) · [系统设计（历史）](docs/system-design.md) · [实现规划（历史）](docs/implementation-plan.md) · [实施记录](docs/implementation-results.md)
+更多说明：[完整使用指南](docs/usage.md) · [标签规范](docs/tags.md) · [系统设计（历史）](docs/system-design.md) · [实现规划（历史）](docs/implementation-plan.md) · [实施记录](docs/implementation-results.md)

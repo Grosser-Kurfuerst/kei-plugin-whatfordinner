@@ -118,3 +118,17 @@
 - 当次使用临时脚本完成真实 Mock＋SQLite 联调：初始 19 项清单、100 元过滤与 25 元仅宜宾燃面可选、群成员同列表、投票／重复投票／改投、群和私聊隔离、同预算保票、条件改变清票，以及个人推荐／换一个／已吃／历史回归。该脚本未入库；仓库内的 `plugins/dinner/integration_test.go` 使用真实 Mock＋SQLite 覆盖投票与个人推荐的重启恢复。
 
 本次修改已包含在 `0347588`（feat(dinner): 增加群投票与南京餐厅候选清单）。
+
+## 2026-10-19：按 id 投票与群共享已吃历史
+
+投票和已吃改为使用餐厅稳定 `id`，列表不再暴露可变的顺序编号。`/dinner 已吃 <id>` 可记录投票列表中的任意餐厅，并同时写入个人历史和会话共享历史；群或频道的下一轮列表使用共享历史计算七天降权，私聊列表继续使用个人历史。共享记录按用户、日期和餐厅去重，保留三十天。
+
+验证：`gofmt -l .` 无输出；`go vet ./...`、`go test ./...`、`go test -race ./...`、`go build ./...` 全部通过。`internal/decision/poll_test.go` 覆盖 id 投票、非法 id、按 id 已吃、重试幂等、个人与共享历史写入、共享历史加权、会话条件校验和私聊隔离；`plugins/dinner/integration_test.go` 使用真实 Mock＋SQLite 覆盖 id 投票、已吃、历史查询及进程重启恢复。
+
+上一轮先统一了忌口标签：`中餐厅`→`中餐`、`外国餐厅`→`外国菜`、`四川菜(川菜)`→`川菜`、`本家韩国料理`→`韩国料理`，补充父类标签并移除品牌标签；忌口输入去除首尾空白、去重并排序，标签顺序不再触发列表重开；清单中不存在的标签直接提示且不修改设置。标签词表、维度和新增规则记录在 [`docs/tags.md`](tags.md)。`TestPollExcludedTagsNormalized` 覆盖顺序、空白和未知标签，`TestCatalogReadOnlyAndOrder` 覆盖清单标签去空白与去重。
+
+### 2026-10-19：四层标签配置与 `/dinner 标签`
+
+标签词表改为 [`config.yaml`](../config.yaml) 的 `plugins.dinner.tag_groups`，固定 `大类`、`菜系`、`品类`、`就餐形式` 四层，共 56 个常用值；`catalog.items[].tags` 只能使用词表中的值，启动时校验，未知标签、重复层、空层或跨层重复都会使插件启动失败。餐厅标签同步补全 `点餐`/`自助餐`、品类和大类。
+
+新增 `/dinner 标签`，按四层顺序展示当前支持的标签；`/dinner 忌口` 使用同一词表校验，词表内但暂无餐厅使用的标签也会被接受，便于未来扩展。`TestTagTaxonomy`、`TestTagTaxonomyValidation`、`TestTagTaxonomyValidatesCatalog`、`TestCatalogTagValidation`、`TestPollUsesConfiguredTagSet` 覆盖词表结构、启动校验、未来标签和命令展示。
