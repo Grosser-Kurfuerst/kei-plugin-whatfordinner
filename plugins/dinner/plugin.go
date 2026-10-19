@@ -3,6 +3,7 @@ package dinner
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand/v2"
 	"time"
@@ -28,17 +29,15 @@ func (*Plugin) Metadata() bot.Metadata {
 	return bot.Metadata{Name: "dinner", Version: "v0.1.0", Description: "晚饭候选清单与个人决策", Permissions: []bot.Permission{bot.PermStorage}}
 }
 
-// Setup 从框架配置构建清单并注册命令。
+// Setup 从框架配置和独立 seed 文件构建清单并注册命令。
 func (p *Plugin) Setup(ctx context.Context, reg bot.Registrar) error {
 	pc, ok := bot.PluginContextFrom(ctx)
 	if !ok {
 		return fmt.Errorf("dinner: missing plugin context")
 	}
 	var config struct {
-		TagGroups []tagGroup `json:"tag_groups"`
-		Catalog   struct {
-			Items []catalog.Option `json:"items"`
-		} `json:"catalog"`
+		TagGroups   []tagGroup `json:"tag_groups"`
+		CatalogSeed string     `json:"catalog_seed"`
 	}
 	if err := pc.Config.Unmarshal(&config); err != nil {
 		return fmt.Errorf("dinner config: %w", err)
@@ -47,18 +46,33 @@ func (p *Plugin) Setup(ctx context.Context, reg bot.Registrar) error {
 	if err != nil {
 		return fmt.Errorf("dinner tags: %w", err)
 	}
-	c, err := catalog.New(config.Catalog.Items)
+	if pc.Storage == nil {
+		return fmt.Errorf("dinner: missing storage")
+	}
+	repo := catalog.NewRepository(pc.Storage)
+	items, err := repo.Load(ctx)
+	seeded := false
+	if errors.Is(err, catalog.ErrNotFound) {
+		items, err = loadCatalogSeed(config.CatalogSeed)
+		seeded = true
+	}
+	if err != nil {
+		return err
+	}
+	c, err := catalog.New(items)
 	if err != nil {
 		return err
 	}
 	if err := tags.validateOptions(c.List()); err != nil {
 		return err
 	}
+	if seeded {
+		if err := repo.Save(ctx, c.List()); err != nil {
+			return err
+		}
+	}
 	p.catalog = c
 	p.tags = tags
-	if pc.Storage == nil {
-		return fmt.Errorf("dinner: missing storage")
-	}
 	store := state.New(pc.Storage)
 	service, err := decision.New(c, store, time.Now, rand.Float64)
 	if err != nil {

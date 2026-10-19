@@ -1,6 +1,6 @@
 # 餐厅清单来源
 
-更新日期：2026-10-10（Asia/Shanghai）。当前共 **19 家**：原清单保留 11 家，新增用户指定的 8 家；比格和流浪泡泡均使用**南京鼓楼吾悦广场店**。数据写入 `config.yaml`，可复核字段保存在 [采集快照](data/restaurant-seed.json)。
+更新日期：2026-10-10（Asia/Shanghai）。当前共 **19 家**：原清单保留 11 家，新增用户指定的 8 家；比格和流浪泡泡均使用**南京鼓楼吾悦广场店**。运行清单写入独立 seed 文件 [`data/restaurants.yaml`](../data/restaurants.yaml)，可复核字段保存在 [采集快照](data/restaurant-seed.json)。
 
 ## 价格和地点口径
 
@@ -14,7 +14,7 @@
 
 原数据来自 [360地图鼓楼区餐馆榜单](https://m.map.360.cn/m/search/ranking/rt=rate&cityid=320106&cat_new_name=%E9%A4%90%E9%A6%86&cityname=%E9%BC%93%E6%A5%BC%E5%8C%BA)，参考人均取公开字段 `detail.avg_price`。
 
-| 配置 ID | 餐厅 | 直线距离（km） | 参考人均（元） |
+| seed ID | 餐厅 | 直线距离（km） | 参考人均（元） |
 |---|---|---:|---:|
 | nanjing-dapaidang-zifeng | 南京大牌档(紫峰店) | 0.750 | 73 |
 | bopeye | Bopeye 80'波派炸鸡&啤酒 | 1.376 | 70 |

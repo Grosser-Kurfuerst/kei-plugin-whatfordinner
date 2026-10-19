@@ -48,11 +48,11 @@ flowchart TD
 
 ### 2.1 清单维护边界
 
-维护入口是宿主配置中的 `plugins.dinner.catalog.items`。插件从 `PluginContext.Config` 解码配置，再将候选交给 `catalog.New`；清单模块不自行读取文件或环境变量。
+维护入口是独立清单 `data/restaurants.yaml`，路径由 `plugins.dinner.catalog_seed` 指定。插件从 `PluginContext.Config` 解码路径、读取 seed 文件，再将候选交给 `catalog.New`；清单模块不自行读取文件或环境变量。首次启动且 `dinner:catalog` 不存在时导入 seed，之后以存储为准；迁移方案见 [清单存储迁移](storage-migration-plan.md)。
 
 维护操作与运行行为：
 
-| 维护操作 | 配置修改 | 运行行为 |
+| 维护操作 | 清单修改 | 运行行为 |
 |---|---|---|
 | 新增 | 增加一个新 ID 的候选 | 重启后参与选择 |
 | 修改 | 保留 ID，修改名称、参考价格或标签 | 重启后使用新数据 |
@@ -65,7 +65,7 @@ ID 标识同一个用餐选项，不能把旧 ID 改作另一个选项使用。�
 
 ## 3. 关键数据结构
 
-以下字段是设计契约；Go 结构体需要对应的 JSON 标签，以兼容 kei 的配置解码和状态存储。
+以下字段是设计契约；Go 结构体需要对应的 JSON 标签以兼容 kei 的状态存储，以及 YAML 标签以兼容 seed 文件。
 
 | 结构 | 关键字段 | 归属与约束 |
 |---|---|---|

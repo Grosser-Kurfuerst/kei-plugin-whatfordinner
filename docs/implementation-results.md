@@ -129,6 +129,18 @@
 
 ### 2026-10-19：四层标签配置与 `/dinner 标签`
 
-标签词表改为 [`config.yaml`](../config.yaml) 的 `plugins.dinner.tag_groups`，固定 `大类`、`菜系`、`品类`、`就餐形式` 四层，共 45 个常用值；`catalog.items[].tags` 只能使用词表中的值，启动时校验，未知标签、重复层、空层或跨层重复都会使插件启动失败。餐厅标签同步补全 `点餐`/`自助餐`、品类和大类。
+标签词表改为 [`config.yaml`](../config.yaml) 的 `plugins.dinner.tag_groups`，固定 `大类`、`菜系`、`品类`、`就餐形式` 四层，共 45 个常用值；`catalog.items[].tags`（现为 [`data/restaurants.yaml`](../data/restaurants.yaml) 的 `items[].tags`）只能使用词表中的值，启动时校验，未知标签、重复层、空层或跨层重复都会使插件启动失败。餐厅标签同步补全 `点餐`/`自助餐`、品类和大类。
 
 新增 `/dinner 标签`，按四层顺序展示当前支持的标签；`/dinner 忌口` 使用同一词表校验，词表内但暂无餐厅使用的标签也会被接受，便于未来扩展。`TestTagTaxonomy`、`TestTagTaxonomyValidation`、`TestTagTaxonomyValidatesCatalog`、`TestCatalogTagValidation`、`TestPollUsesConfiguredTagSet` 覆盖词表结构、启动校验、未来标签和命令展示。
+
+### 2026-10-19：餐厅清单拆分为独立 seed 文件
+
+餐厅清单从 `config.yaml` 移到 [`data/restaurants.yaml`](../data/restaurants.yaml)，配置只保留 `plugins.dinner.catalog_seed` 路径。插件启动时读取该 YAML 文件并交给 `catalog.New`；`catalog.Option` 增加 YAML 标签以复用同一结构。seed 文件是为首次接入 kei 统一存储准备的初始化数据，后续迁移方案见 [清单存储迁移](storage-migration-plan.md)。
+
+验证：`gofmt -l .` 无输出；`go test ./...` 全部通过。测试夹具改为在临时目录生成 seed 文件，`TestSQLitePersistenceAcrossRestart` 继续覆盖真实 Mock＋SQLite 重启恢复。
+
+### 2026-10-19：清单持久化到 `dinner:catalog`
+
+新增 `internal/catalog/repository.go`，把完整清单保存为 kei 存储中的一个 JSON 文档（`version: 1`，TTL 0）。插件启动顺序改为：读取 `dinner:catalog`；仅在 `bot.ErrNotFound` 时读取 seed，完成结构及标签校验后再写入，避免无效清单落库。已有清单时不再读取 seed；seed 修改、存储损坏、未知版本等行为按 [迁移方案](storage-migration-plan.md) 处理。
+
+验证：`internal/catalog/repository_test.go` 覆盖首次未找到、保存/读取、规范化、无效清单不落库、读取错误、损坏 JSON、未知版本、空清单、nil 存储和 `ErrNotFound` 映射；插件测试覆盖首次导入、重启复用、删除后重新导入、读取失败不回退 seed 和缺失存储；`TestCatalogStorageLifecycle` 使用真实 Mock＋SQLite 验证首次写入、修改 seed 不覆盖存储、删除键后重新导入。

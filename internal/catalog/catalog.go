@@ -9,12 +9,12 @@ import (
 
 // Option 是一个可直接选择的用餐选项；价格单位为分，nil 表示未知。
 type Option struct {
-	ID         string   `json:"id"`
-	Name       string   `json:"name"`
-	Venue      string   `json:"venue"`
-	PriceCents *int64   `json:"price_cents"`
-	Tags       []string `json:"tags"`
-	Enabled    bool     `json:"enabled"`
+	ID         string   `json:"id" yaml:"id"`
+	Name       string   `json:"name" yaml:"name"`
+	Venue      string   `json:"venue" yaml:"venue"`
+	PriceCents *int64   `json:"price_cents" yaml:"price_cents"`
+	Tags       []string `json:"tags" yaml:"tags"`
+	Enabled    bool     `json:"enabled" yaml:"enabled"`
 }
 
 // Catalog 保存按配置顺序排列的只读清单。

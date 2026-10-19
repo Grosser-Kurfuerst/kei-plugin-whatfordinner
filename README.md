@@ -69,8 +69,8 @@ opts.Plugins = append(opts.Plugins, &dinner.Plugin{})
 
 ## 维护餐厅清单
 
-编辑 [config.yaml](config.yaml) 的 `plugins.dinner.tag_groups` 和 `plugins.dinner.catalog.items` 后重启。`tag_groups` 固定为 `大类`、`菜系`、`品类`、`就餐形式` 四层；餐厅标签只能使用其中声明的值，否则启动失败。餐厅 `id` 保持唯一、稳定；`price_cents` 单位为分，未知时省略；`enabled: false` 可停用。价格未知的餐厅只参与不限预算的推荐，忌口按标签精确匹配，不推断配料、辣度或过敏原；可用标签见 `/dinner 标签`。
+编辑 [config.yaml](config.yaml) 的 `plugins.dinner.tag_groups`，以及独立清单 [data/restaurants.yaml](data/restaurants.yaml) 后重启。`tag_groups` 固定为 `大类`、`菜系`、`品类`、`就餐形式` 四层；餐厅标签只能使用其中声明的值，否则启动失败。`catalog_seed` 指向该清单文件；首次启动且 `dinner:catalog` 不存在时导入，之后以存储为准。修改 seed 后需删除该键并重启才能重新导入。餐厅 `id` 保持唯一、稳定；`price_cents` 单位为分，未知时省略；`enabled: false` 可停用。价格未知的餐厅只参与不限预算的推荐，忌口按标签精确匹配，不推断配料、辣度或过敏原；可用标签见 `/dinner 标签`。
 
 当前内置 19 家南大鼓楼校区周边候选餐厅，比格和流浪泡泡均使用鼓楼吾悦广场店。价格为公开来源参考值，地点及价格核验情况见 [餐厅来源说明](docs/restaurant-sources.md)。
 
-更多说明：[完整使用指南](docs/usage.md) · [标签规范](docs/tags.md) · [系统设计（历史）](docs/system-design.md) · [实现规划（历史）](docs/implementation-plan.md) · [实施记录](docs/implementation-results.md)
+更多说明：[完整使用指南](docs/usage.md) · [标签规范](docs/tags.md) · [清单存储迁移方案](docs/storage-migration-plan.md) · [系统设计（历史）](docs/system-design.md) · [实现规划（历史）](docs/implementation-plan.md) · [实施记录](docs/implementation-results.md)

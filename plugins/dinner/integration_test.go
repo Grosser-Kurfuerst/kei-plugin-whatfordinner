@@ -2,12 +2,14 @@ package dinner
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -15,6 +17,7 @@ import (
 
 	"github.com/RandomLemon/kei/pkg/bot"
 	"github.com/RandomLemon/kei/pkg/kei"
+	_ "github.com/mattn/go-sqlite3"
 
 	_ "github.com/RandomLemon/kei/adapters/mock"
 )
@@ -23,6 +26,10 @@ import (
 // 验证投票与个人推荐在进程重启后仍然可查询。
 func TestSQLitePersistenceAcrossRestart(t *testing.T) {
 	dsn := filepath.Join(t.TempDir(), "dinner.db")
+	seed := filepath.Join(t.TempDir(), "restaurants.yaml")
+	if err := os.WriteFile(seed, []byte("items:\n- {id: a, name: A, price_cents: 1800, enabled: true}\n- {id: b, name: B, price_cents: 3000, enabled: true}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	addr := freeAddr(t)
 	config := fmt.Sprintf(`
 bots:
@@ -44,11 +51,8 @@ plugins:
       tags: [面食]
     - name: 就餐形式
       tags: [点餐]
-    catalog:
-      items:
-      - {id: a, name: A, price_cents: 1800, enabled: true}
-      - {id: b, name: B, price_cents: 3000, enabled: true}
-`, addr, dsn)
+    catalog_seed: %q
+`, addr, dsn, seed)
 
 	base, stop := startBot(t, addr, config)
 	integrationInject(t, base, "/dinner 18")
@@ -71,6 +75,117 @@ plugins:
 	integrationWaitSent(t, base, 2, "A [a]")
 	integrationInject(t, base, "/dinner 推荐")
 	integrationWaitSent(t, base, 3, "今天已吃并记录：A [a]")
+}
+
+func TestCatalogStorageLifecycle(t *testing.T) {
+	dsn := filepath.Join(t.TempDir(), "catalog.db")
+	seed := filepath.Join(t.TempDir(), "restaurants.yaml")
+	writeSeed := func(content string) {
+		t.Helper()
+		if err := os.WriteFile(seed, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeSeed("items:\n- {id: a, name: A, enabled: true}\n")
+
+	addr := freeAddr(t)
+	config := fmt.Sprintf(`
+bots:
+- name: mock-main
+  adapter: mock
+  listen_addr: %s
+storage:
+  type: sqlite
+  dsn: %s
+plugins:
+  dinner:
+    enabled: true
+    tag_groups:
+    - name: 大类
+      tags: [中餐]
+    - name: 菜系
+      tags: [川菜]
+    - name: 品类
+      tags: [面食]
+    - name: 就餐形式
+      tags: [点餐]
+    catalog_seed: %q
+`, addr, dsn, seed)
+
+	base, stop := startBot(t, addr, config)
+	integrationInject(t, base, "/dinner 候选")
+	integrationWaitSent(t, base, 1, "A [a]")
+	stop()
+	if !catalogStored(t, dsn) {
+		t.Fatal("first startup did not persist dinner:catalog")
+	}
+
+	writeSeed("items:\n- {id: b, name: B, enabled: true}\n")
+	base, stop = startBot(t, addr, config)
+	integrationInject(t, base, "/dinner 候选")
+	integrationWaitSent(t, base, 1, "A [a]")
+	if sent := integrationSent(t, base); strings.Contains(sent, "B [b]") {
+		t.Fatal("restart reread the changed seed instead of stored catalog")
+	}
+	stop()
+
+	deleteCatalogKey(t, dsn)
+	base, stop = startBot(t, addr, config)
+	integrationInject(t, base, "/dinner 候选")
+	integrationWaitSent(t, base, 1, "B [b]")
+	stop()
+}
+
+func catalogStored(t *testing.T, dsn string) bool {
+	t.Helper()
+	db, err := sql.Open("sqlite3", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var value []byte
+	err = db.QueryRow(`SELECT value FROM kei_storage WHERE key = ?`, "dinner:catalog").Scan(&value)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	return len(value) > 0
+}
+
+func deleteCatalogKey(t *testing.T, dsn string) {
+	t.Helper()
+	db, err := sql.Open("sqlite3", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	result, err := db.Exec(`DELETE FROM kei_storage WHERE key = ?`, "dinner:catalog")
+	if err != nil {
+		t.Fatal(err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if affected != 1 {
+		t.Fatalf("deleted rows = %d, want 1", affected)
+	}
+}
+
+func integrationSent(t *testing.T, base string) string {
+	t.Helper()
+	resp, err := http.Get(base + "/sent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
 }
 
 func freeAddr(t *testing.T) string {

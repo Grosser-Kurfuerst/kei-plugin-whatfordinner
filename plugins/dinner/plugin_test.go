@@ -4,13 +4,18 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"example.com/whatfordinner/internal/decision"
-	"example.com/whatfordinner/internal/state"
-	"github.com/RandomLemon/kei/pkg/bot"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"example.com/whatfordinner/internal/catalog"
+	"example.com/whatfordinner/internal/decision"
+	"example.com/whatfordinner/internal/state"
+	"github.com/RandomLemon/kei/pkg/bot"
+	"gopkg.in/yaml.v3"
 )
 
 var testClock = func() time.Time { return time.Date(2026, 10, 19, 4, 0, 0, 0, time.UTC) }
@@ -21,13 +26,42 @@ func setupPlugin(t *testing.T, items []any) (*Plugin, bot.Handler) {
 	return p, h
 }
 
+// writeSeedFile 把测试用餐厅列表写成独立 seed 文件，返回其路径。
+func writeSeedFile(t *testing.T, items []any) string {
+	t.Helper()
+	data, err := yaml.Marshal(map[string]any{"items": items})
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "restaurants.yaml")
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+// setupPluginWithStorage 用指定 seed 和存储完成插件装配，便于验证首次导入与重启。
+func setupPluginWithStorage(t *testing.T, seedPath string, storage *testStorage) *Plugin {
+	t.Helper()
+	p := &Plugin{}
+	reg := bot.NewRecordingRegistrar()
+	ctx := bot.WithPluginContext(context.Background(), bot.PluginContext{Storage: storage, Config: bot.NewConfig(map[string]any{
+		"tag_groups":   testTagGroups(),
+		"catalog_seed": seedPath,
+	})})
+	if err := p.Setup(ctx, reg); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
 // setupPluginAt 使用可控时钟和固定随机值重建服务，避免跨零点与概率导致的测试抖动。
 func setupPluginAt(t *testing.T, items []any, now func() time.Time) (*Plugin, bot.Handler, *testStorage) {
 	t.Helper()
 	p := &Plugin{}
 	reg := bot.NewRecordingRegistrar()
 	storage := &testStorage{values: make(map[string][]byte)}
-	ctx := bot.WithPluginContext(context.Background(), bot.PluginContext{Storage: storage, Config: bot.NewConfig(map[string]any{"tag_groups": testTagGroups(), "catalog": map[string]any{"items": items}})})
+	ctx := bot.WithPluginContext(context.Background(), bot.PluginContext{Storage: storage, Config: bot.NewConfig(map[string]any{"tag_groups": testTagGroups(), "catalog_seed": writeSeedFile(t, items)})})
 	if err := p.Setup(ctx, reg); err != nil {
 		t.Fatal(err)
 	}
@@ -85,14 +119,117 @@ func TestCommands(t *testing.T) {
 func TestCatalogTagValidation(t *testing.T) {
 	p := &Plugin{}
 	reg := bot.NewRecordingRegistrar()
-	ctx := bot.WithPluginContext(context.Background(), bot.PluginContext{Config: bot.NewConfig(map[string]any{
+	storage := &testStorage{values: map[string][]byte{}}
+	ctx := bot.WithPluginContext(context.Background(), bot.PluginContext{Storage: storage, Config: bot.NewConfig(map[string]any{
 		"tag_groups": testTagGroups(),
-		"catalog": map[string]any{"items": []any{
+		"catalog_seed": writeSeedFile(t, []any{
 			map[string]any{"id": "a", "name": "A", "enabled": true, "tags": []string{"未配置"}},
-		}},
+		}),
 	})})
 	if err := p.Setup(ctx, reg); err == nil || !strings.Contains(err.Error(), "未配置") {
 		t.Fatalf("expected tag validation error, got %v", err)
+	}
+	if _, ok := storage.values["dinner:catalog"]; ok {
+		t.Fatal("invalid catalog must not be persisted")
+	}
+}
+
+func TestCatalogSeedValidation(t *testing.T) {
+	dir := t.TempDir()
+	invalidYAML := filepath.Join(dir, "invalid.yaml")
+	if err := os.WriteFile(invalidYAML, []byte("items: [\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	unknownField := filepath.Join(dir, "unknown.yaml")
+	if err := os.WriteFile(unknownField, []byte("items:\n- id: a\n  name: A\n  unexpected: true\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct {
+		name string
+		path string
+		want string
+	}{
+		{name: "empty path", path: "", want: "catalog_seed 不能为空"},
+		{name: "missing file", path: filepath.Join(dir, "missing.yaml"), want: "读取 catalog_seed"},
+		{name: "invalid yaml", path: invalidYAML, want: "解析 catalog_seed"},
+		{name: "unknown field", path: unknownField, want: "解析 catalog_seed"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			p := &Plugin{}
+			reg := bot.NewRecordingRegistrar()
+			ctx := bot.WithPluginContext(context.Background(), bot.PluginContext{Storage: &testStorage{values: map[string][]byte{}}, Config: bot.NewConfig(map[string]any{
+				"tag_groups":   testTagGroups(),
+				"catalog_seed": tc.path,
+			})})
+			if err := p.Setup(ctx, reg); err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("expected %q, got %v", tc.want, err)
+			}
+		})
+	}
+}
+
+func TestCatalogImportReuseAndReimport(t *testing.T) {
+	storage := &testStorage{values: map[string][]byte{}}
+	seed := writeSeedFile(t, []any{map[string]any{"id": "a", "name": "A", "enabled": true}})
+	setupPluginWithStorage(t, seed, storage)
+
+	loaded, err := catalog.NewRepository(storage).Load(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(loaded) != 1 || loaded[0].ID != "a" {
+		t.Fatalf("imported catalog = %#v, want only a", loaded)
+	}
+
+	updated, err := yaml.Marshal(map[string]any{"items": []any{
+		map[string]any{"id": "b", "name": "B", "enabled": true},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(seed, updated, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	p := setupPluginWithStorage(t, seed, storage)
+	if items := p.catalog.List(); len(items) != 1 || items[0].ID != "a" {
+		t.Fatalf("restart must reuse stored catalog, got %#v", items)
+	}
+
+	delete(storage.values, "dinner:catalog")
+	p = setupPluginWithStorage(t, seed, storage)
+	if items := p.catalog.List(); len(items) != 1 || items[0].ID != "b" {
+		t.Fatalf("reimport must use updated seed, got %#v", items)
+	}
+}
+
+func TestCatalogStorageReadFailureDoesNotFallback(t *testing.T) {
+	failure := errors.New("storage read failure")
+	storage := &testStorage{values: map[string][]byte{}, getErr: failure}
+	p := &Plugin{}
+	reg := bot.NewRecordingRegistrar()
+	ctx := bot.WithPluginContext(context.Background(), bot.PluginContext{Storage: storage, Config: bot.NewConfig(map[string]any{
+		"tag_groups":   testTagGroups(),
+		"catalog_seed": filepath.Join(t.TempDir(), "missing.yaml"),
+	})})
+	if err := p.Setup(ctx, reg); !errors.Is(err, failure) {
+		t.Fatalf("Setup error = %v, want storage failure", err)
+	}
+	if _, ok := storage.values["dinner:catalog"]; ok {
+		t.Fatal("read failure must not write catalog")
+	}
+}
+
+func TestCatalogRequiresStorage(t *testing.T) {
+	p := &Plugin{}
+	reg := bot.NewRecordingRegistrar()
+	ctx := bot.WithPluginContext(context.Background(), bot.PluginContext{Config: bot.NewConfig(map[string]any{
+		"tag_groups":   testTagGroups(),
+		"catalog_seed": writeSeedFile(t, []any{map[string]any{"id": "a", "name": "A", "enabled": true}}),
+	})})
+	if err := p.Setup(ctx, reg); err == nil || !strings.Contains(err.Error(), "missing storage") {
+		t.Fatalf("Setup error = %v, want missing storage", err)
 	}
 }
 
@@ -106,7 +243,7 @@ func TestEmptyCatalogAndInvalidSetup(t *testing.T) {
 	if err := p.Setup(context.Background(), reg); err == nil {
 		t.Fatal("expected missing context")
 	}
-	ctx := bot.WithPluginContext(context.Background(), bot.PluginContext{Config: bot.NewConfig(map[string]any{"tag_groups": testTagGroups(), "catalog": map[string]any{"items": []any{map[string]any{"id": "a"}}}})})
+	ctx := bot.WithPluginContext(context.Background(), bot.PluginContext{Storage: &testStorage{values: map[string][]byte{}}, Config: bot.NewConfig(map[string]any{"tag_groups": testTagGroups(), "catalog_seed": writeSeedFile(t, []any{map[string]any{"id": "a"}})})})
 	if err := p.Setup(ctx, reg); err == nil {
 		t.Fatal("expected invalid catalog")
 	}
@@ -191,11 +328,12 @@ func TestHandlerStorageFailureDoesNotReplySuccess(t *testing.T) {
 	p := &Plugin{}
 	reg := bot.NewRecordingRegistrar()
 	failure := errors.New("storage failure")
-	storage := &testStorage{values: map[string][]byte{}, setErr: failure}
-	ctx := bot.WithPluginContext(context.Background(), bot.PluginContext{Storage: storage, Config: bot.NewConfig(map[string]any{"tag_groups": testTagGroups(), "catalog": map[string]any{"items": []any{map[string]any{"id": "a", "name": "A", "enabled": true}}}})})
+	storage := &testStorage{values: map[string][]byte{}}
+	ctx := bot.WithPluginContext(context.Background(), bot.PluginContext{Storage: storage, Config: bot.NewConfig(map[string]any{"tag_groups": testTagGroups(), "catalog_seed": writeSeedFile(t, []any{map[string]any{"id": "a", "name": "A", "enabled": true}})})})
 	if err := p.Setup(ctx, reg); err != nil {
 		t.Fatal(err)
 	}
+	storage.setErr = failure
 	rule, _ := reg.Command("dinner")
 	r := bot.NewNoopReply()
 	e := &bot.Event{Platform: "mock", BotID: "bot", Sender: &bot.User{ID: "u"}, Command: &bot.Command{Name: "dinner"}}
@@ -333,8 +471,9 @@ func TestPreferenceHandlerStorageAndSendFailures(t *testing.T) {
 		if args[0] == "帮助" {
 			continue
 		}
+		before := len(storage.values)
 		storage.setErr = failure
-		if err := h(context.Background(), e, r); !errors.Is(err, failure) || r.PlainText() != "" || len(storage.values) != 0 {
+		if err := h(context.Background(), e, r); !errors.Is(err, failure) || r.PlainText() != "" || len(storage.values) != before {
 			t.Fatalf("save failure reported success: %q %v", r.PlainText(), err)
 		}
 		storage.setErr = nil
@@ -351,7 +490,10 @@ func TestPreferenceHandlerStorageAndSendFailures(t *testing.T) {
 	if text := invoke(t, h, u, "帮助"); !strings.Contains(text, "当前预算：18.00 元") {
 		t.Fatalf("saved preference lost after failed send: %s", text)
 	}
-	for _, data := range storage.values {
+	for key, data := range storage.values {
+		if !strings.HasPrefix(key, "dinner:poll:") {
+			continue
+		}
 		var saved decision.PollState
 		if err := json.Unmarshal(data, &saved); err != nil || saved.Profile.BudgetCents != 1800 {
 			t.Fatalf("saved state = %+v %v", saved, err)

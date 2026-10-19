@@ -1,6 +1,6 @@
 # 标签规范
 
-标签用于 `/dinner 忌口` 的精确排除，并通过 `/dinner 标签` 分层展示。词表写在 [`config.yaml`](../config.yaml) 的 `plugins.dinner.tag_groups`，启动时校验；`catalog.items[].tags` 只能使用词表中声明的值。
+标签用于 `/dinner 忌口` 的精确排除，并通过 `/dinner 标签` 分层展示。词表写在 [`config.yaml`](../config.yaml) 的 `plugins.dinner.tag_groups`，启动时校验；[`data/restaurants.yaml`](../data/restaurants.yaml) 的 `items[].tags` 只能使用词表中声明的值。
 
 ## 四层结构
 
@@ -34,7 +34,7 @@
 1. 固定四层；配置文件缺少任一层、出现未知层或层名重复都会使插件启动失败。
 2. 每层至少一个标签；标签不能为空、不能包含空白字符，且不能跨层重复。
 3. 餐厅可以同时有多个层级的标签，例如 `中餐` + `川菜` + `点餐`，或 `西餐` + `披萨` + `自助餐`。
-4. `catalog.items[].tags` 中的每个值都必须在 `tag_groups` 中存在，否则插件启动失败。
+4. `data/restaurants.yaml` 的 `items[].tags` 中每个值都必须在 `tag_groups` 中存在，否则插件启动失败。
 5. 词表允许暂时没有餐厅使用，方便提前加入未来会用的标签。
 6. 标签按字面值精确匹配，区分大小写；不支持同义词、拼音或自然语言推断。
 7. 不使用品牌标签（例如 `海底捞`），品牌差异通过独立条目或 `enabled: false` 维护。
@@ -50,6 +50,6 @@
 ## 维护流程
 
 1. 在 [`config.yaml`](../config.yaml) 的 `plugins.dinner.tag_groups` 中增加或修改标签。
-2. 把新标签加到对应餐厅的 `catalog.items[].tags`，或留作未来使用的词表项。
+2. 把新标签加到 [`data/restaurants.yaml`](../data/restaurants.yaml) 对应餐厅的 `tags`，或留作未来使用的词表项。
 3. 同步更新本文件的词表。
 4. 重启宿主；启动校验通过后，`/dinner 标签` 和 `/dinner 候选` 会展示新词表。
