@@ -30,13 +30,13 @@ func TestAdminHelp(t *testing.T) {
 		t.Fatal("missing dinner-admin command")
 	}
 	before := p.service.ListCatalog()
-	for _, raw := range []string{"", "帮助", "删除 x", "unknown"} {
+	for _, raw := range []string{"", "帮助", "unknown"} {
 		text := invokeAdmin(t, rule.Handler, raw)
 		if !strings.Contains(text, "清单管理") || !strings.Contains(text, "添加") {
 			t.Fatalf("help = %q", text)
 		}
-		if strings.Contains(text, "/dinner-admin 删除") {
-			t.Fatalf("phase one help advertises delete: %q", text)
+		if !strings.Contains(text, "/dinner-admin 删除 <id>") {
+			t.Fatalf("help missing delete: %q", text)
 		}
 	}
 	if after := p.service.ListCatalog(); !reflect.DeepEqual(before, after) {
@@ -58,6 +58,9 @@ func TestAdminAddImmediately(t *testing.T) {
 
 	items := p.service.ListCatalog()
 	option := findTestOption(t, items, "c")
+	if !option.Enabled {
+		t.Fatal("added option must be enabled")
+	}
 	if option.PriceCents == nil || *option.PriceCents != 2550 {
 		t.Fatalf("price = %v", option.PriceCents)
 	}
@@ -152,6 +155,169 @@ func TestAdminAddPersistsAcrossRestart(t *testing.T) {
 	findTestOption(t, restarted.service.ListCatalog(), "c")
 }
 
+func TestAdminDeleteImmediately(t *testing.T) {
+	p, reg, storage := setupPluginWithReg(t, []any{
+		map[string]any{"id": "a", "name": "A", "enabled": true},
+		map[string]any{"id": "b", "name": "B", "enabled": true},
+	}, testClock)
+	rule, _ := reg.Command("dinner-admin")
+	dinnerRule, _ := reg.Command("dinner")
+
+	text := invokeAdmin(t, rule.Handler, "删除 a")
+	for _, want := range []string{"已删除餐厅", "A [a]"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("missing %q in %q", want, text)
+		}
+	}
+
+	items := p.service.ListCatalog()
+	if hasTestOption(items, "a") {
+		t.Fatalf("runtime catalog still contains a: %+v", items)
+	}
+	findTestOption(t, items, "b")
+	stored, err := catalog.NewRepository(storage).Load(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasTestOption(stored, "a") {
+		t.Fatalf("stored catalog still contains a: %+v", stored)
+	}
+	findTestOption(t, stored, "b")
+
+	candidates := invoke(t, dinnerRule.Handler, &bot.User{ID: "u1"}, "候选")
+	if strings.Contains(candidates, "A [a]") {
+		t.Fatalf("candidate list still contains a: %q", candidates)
+	}
+}
+
+func TestAdminDeletePreservesHistoryAndMarksPollUnavailable(t *testing.T) {
+	_, reg, _ := setupPluginWithReg(t, []any{map[string]any{"id": "a", "name": "A", "enabled": true}}, testClock)
+	rule, _ := reg.Command("dinner-admin")
+	dinnerRule, _ := reg.Command("dinner")
+	u := &bot.User{ID: "u1"}
+
+	invoke(t, dinnerRule.Handler, u)
+	if text := invoke(t, dinnerRule.Handler, u, "已吃", "a"); !strings.Contains(text, "已吃并记录") {
+		t.Fatalf("mark eaten = %q", text)
+	}
+	invokeAdmin(t, rule.Handler, "删除 a")
+
+	if text := invoke(t, dinnerRule.Handler, u, "历史"); !strings.Contains(text, "A [a]") {
+		t.Fatalf("history lost deleted option: %q", text)
+	}
+	if text := invoke(t, dinnerRule.Handler, u); !strings.Contains(text, "当前不可用") {
+		t.Fatalf("poll entry not marked unavailable: %q", text)
+	}
+}
+
+func TestAdminDeleteValidation(t *testing.T) {
+	p, reg, storage := setupPluginWithReg(t, []any{map[string]any{"id": "a", "name": "A", "enabled": true}}, testClock)
+	rule, _ := reg.Command("dinner-admin")
+	dinnerRule, _ := reg.Command("dinner")
+	u := &bot.User{ID: "u1"}
+	invoke(t, dinnerRule.Handler, u)
+	invoke(t, dinnerRule.Handler, u, "已吃", "a")
+
+	historyBefore := invoke(t, dinnerRule.Handler, u, "历史")
+	if !strings.Contains(historyBefore, "A [a]") {
+		t.Fatalf("history setup failed: %q", historyBefore)
+	}
+	before, err := catalog.NewRepository(storage).Load(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtimeBefore := p.service.ListCatalog()
+	cases := []struct {
+		raw  string
+		want string
+	}{
+		{raw: "删除 missing", want: "未找到"},
+		{raw: "删除", want: "id 不能为空或包含空白字符"},
+		{raw: "删除 a b", want: "id 不能为空或包含空白字符"},
+	}
+	for _, tc := range cases {
+		if text := invokeAdmin(t, rule.Handler, tc.raw); !strings.Contains(text, tc.want) {
+			t.Fatalf("%q: missing %q in %q", tc.raw, tc.want, text)
+		}
+		if got := p.service.ListCatalog(); !reflect.DeepEqual(got, runtimeBefore) {
+			t.Fatalf("%q changed runtime catalog: %+v -> %+v", tc.raw, runtimeBefore, got)
+		}
+		stored, err := catalog.NewRepository(storage).Load(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(stored, before) {
+			t.Fatalf("%q changed stored catalog: %+v -> %+v", tc.raw, before, stored)
+		}
+		if history := invoke(t, dinnerRule.Handler, u, "历史"); history != historyBefore {
+			t.Fatalf("%q changed history: %q -> %q", tc.raw, historyBefore, history)
+		}
+	}
+}
+
+func TestAdminDeleteSaveFailureLeavesRuntimeUnchanged(t *testing.T) {
+	p, reg, storage := setupPluginWithReg(t, []any{map[string]any{"id": "a", "name": "A", "enabled": true}}, testClock)
+	rule, _ := reg.Command("dinner-admin")
+	before := p.service.ListCatalog()
+	failure := errors.New("save failed")
+	storage.setErr = failure
+
+	text, err := invokeAdminResult(t, rule.Handler, "删除 a")
+	if !errors.Is(err, failure) {
+		t.Fatalf("error = %v, want %v", err, failure)
+	}
+	if text != "" {
+		t.Fatalf("false success: %q", text)
+	}
+	if after := p.service.ListCatalog(); !reflect.DeepEqual(before, after) {
+		t.Fatalf("runtime catalog changed: %+v -> %+v", before, after)
+	}
+	stored, err := catalog.NewRepository(storage).Load(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(stored, before) {
+		t.Fatalf("stored catalog changed: %+v -> %+v", before, stored)
+	}
+}
+
+func TestAdminDeletePersistsAcrossRestart(t *testing.T) {
+	_, reg, storage := setupPluginWithReg(t, []any{
+		map[string]any{"id": "a", "name": "A", "enabled": true},
+		map[string]any{"id": "b", "name": "B", "enabled": true},
+	}, testClock)
+	rule, _ := reg.Command("dinner-admin")
+	invokeAdmin(t, rule.Handler, "删除 a")
+
+	restarted := setupPluginWithStorage(t, filepath.Join(t.TempDir(), "missing.yaml"), storage)
+	items := restarted.service.ListCatalog()
+	if hasTestOption(items, "a") {
+		t.Fatalf("deleted option restored after restart: %+v", items)
+	}
+	findTestOption(t, items, "b")
+}
+
+func TestAdminDeleteLastRestaurant(t *testing.T) {
+	p, reg, storage := setupPluginWithReg(t, []any{map[string]any{"id": "a", "name": "A", "enabled": true}}, testClock)
+	rule, _ := reg.Command("dinner-admin")
+	dinnerRule, _ := reg.Command("dinner")
+
+	invokeAdmin(t, rule.Handler, "删除 a")
+	if items := p.service.ListCatalog(); len(items) != 0 {
+		t.Fatalf("runtime catalog = %+v, want empty", items)
+	}
+	stored, err := catalog.NewRepository(storage).Load(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stored) != 0 {
+		t.Fatalf("stored catalog = %+v, want empty", stored)
+	}
+	if text := invoke(t, dinnerRule.Handler, &bot.User{ID: "u1"}); !strings.Contains(text, "暂无可选项") {
+		t.Fatalf("empty catalog reply = %q", text)
+	}
+}
+
 func invokeAdmin(t *testing.T, h bot.Handler, raw string) string {
 	t.Helper()
 	text, err := invokeAdminResult(t, h, raw)
@@ -172,6 +338,15 @@ func invokeAdminResult(t *testing.T, h bot.Handler, raw string) (string, error) 
 	}
 	err := h(context.Background(), e, r)
 	return r.PlainText(), err
+}
+
+func hasTestOption(items []catalog.Option, id string) bool {
+	for _, item := range items {
+		if item.ID == id {
+			return true
+		}
+	}
+	return false
 }
 
 func findTestOption(t *testing.T, items []catalog.Option, id string) catalog.Option {

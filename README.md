@@ -53,12 +53,13 @@ curl -s http://127.0.0.1:18080/sent
 
 ```sh
 /dinner-admin 添加 id=<id> | name=<名称> | price=<人均元> | venue=<地点> | tags=<标签1,标签2>
+/dinner-admin 删除 <id>
 /dinner-admin 帮助
 ```
 
 `id` 和 `name` 必填；`price`、`venue`、`tags` 可选，省略 `price` 表示价格未知。`price` 必须是正数且最多两位小数；`tags` 用英文逗号分隔，只能使用 `/dinner 标签` 中列出的值；字段用 `|` 分隔，字段值不能包含 `|`。名称和地点可以包含空格。
 
-添加成功后，当前进程的 `/dinner 候选`、下一次列表生成和个人推荐立即使用新清单，无需重启。管理命令写入统一存储的 `dinner:catalog`，不修改 [data/restaurants.yaml](data/restaurants.yaml)；删除该存储键并重新导入 seed 会覆盖管理命令的改动。
+添加或删除成功后，当前进程的 `/dinner 候选` 和下一轮列表生成立即使用更新后的清单；之后的个人推荐和换选也使用新清单，无需重启。删除只移除清单项，不改个人状态、已吃历史、当日列表或选票；已生成列表中的被删项会显示为不可用。管理命令写入统一存储的 `dinner:catalog`，不修改 [data/restaurants.yaml](data/restaurants.yaml)；删除该存储键并重新导入 seed 会覆盖管理命令的改动。
 
 ## 接入已有 kei 程序
 

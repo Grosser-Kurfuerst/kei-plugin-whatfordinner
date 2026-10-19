@@ -23,6 +23,8 @@ func (p *Plugin) handleAdmin(ctx context.Context, e *bot.Event, r bot.Reply) err
 	switch sub {
 	case "添加":
 		return p.addRestaurant(ctx, r, rest)
+	case "删除":
+		return p.deleteRestaurant(ctx, r, rest)
 	default:
 		return r.Text(adminHelpText()).Send(ctx)
 	}
@@ -85,6 +87,38 @@ func (p *Plugin) addRestaurant(ctx context.Context, r bot.Reply, raw string) err
 	p.service.SetCatalog(c)
 	option, _ := c.Find(id)
 	return r.Text("已添加餐厅：\n" + formatCatalogOption(option) + "\n下一轮列表生成会使用新清单。").Send(ctx)
+}
+
+func (p *Plugin) deleteRestaurant(ctx context.Context, r bot.Reply, raw string) error {
+	id := strings.TrimSpace(raw)
+	if id == "" || strings.ContainsAny(id, " \t\r\n") {
+		return r.Text("删除失败：id 不能为空或包含空白字符").Send(ctx)
+	}
+
+	p.adminMu.Lock()
+	defer p.adminMu.Unlock()
+	items := p.service.ListCatalog()
+	index := -1
+	for i, item := range items {
+		if item.ID == id {
+			index = i
+			break
+		}
+	}
+	if index < 0 {
+		return r.Text(fmt.Sprintf("删除失败：未找到 id %q", id)).Send(ctx)
+	}
+	removed := items[index]
+	items = append(items[:index], items[index+1:]...)
+	c, err := p.buildCatalog(items)
+	if err != nil {
+		return r.Text("删除失败：" + err.Error()).Send(ctx)
+	}
+	if err := p.repo.Save(ctx, c.List()); err != nil {
+		return fmt.Errorf("保存清单: %w", err)
+	}
+	p.service.SetCatalog(c)
+	return r.Text("已删除餐厅：\n" + formatCatalogOption(removed) + "\n已生成的今日列表和已吃历史保留；被删项会显示为不可用。").Send(ctx)
 }
 
 func splitAdminCommand(raw string) (sub, rest string) {
@@ -153,6 +187,7 @@ func (p *Plugin) buildCatalog(items []catalog.Option) (*catalog.Catalog, error) 
 func adminHelpText() string {
 	return `清单管理（仅管理员）：
 /dinner-admin 添加 id=<id> | name=<名称> | price=<人均元> | venue=<地点> | tags=<标签1,标签2>
+/dinner-admin 删除 <id>
 /dinner-admin 帮助
 id 和 name 必填；price、venue、tags 可选；省略 price 表示价格未知。
 price 为正数，最多两位小数；tags 用英文逗号分隔；字段用 | 分隔，字段值不能包含 |。`
