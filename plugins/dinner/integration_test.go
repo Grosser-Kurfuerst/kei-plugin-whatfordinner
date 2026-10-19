@@ -203,15 +203,27 @@ func freeAddr(t *testing.T) string {
 // clearKEIEnv 移除环境变量对配置的覆盖，确保测试只使用内联配置。
 func clearKEIEnv(t *testing.T) {
 	t.Helper()
+	const prefix = "KEI_"
 	for _, entry := range os.Environ() {
 		key, value, ok := strings.Cut(entry, "=")
-		if !ok || !strings.HasPrefix(key, "KEI_") {
+		if !ok || len(key) <= len(prefix) || !strings.EqualFold(key[:len(prefix)], prefix) {
 			continue
 		}
 		if err := os.Unsetenv(key); err != nil {
 			t.Fatal(err)
 		}
 		t.Cleanup(func() { _ = os.Setenv(key, value) })
+	}
+}
+
+func TestClearKEIEnvCaseInsensitive(t *testing.T) {
+	t.Setenv("kei_storage_dsn", "lower")
+	t.Setenv("Kei_Storage_Dsn", "mixed")
+	clearKEIEnv(t)
+	for _, key := range []string{"kei_storage_dsn", "Kei_Storage_Dsn"} {
+		if _, ok := os.LookupEnv(key); ok {
+			t.Fatalf("environment variable %s was not cleared", key)
+		}
 	}
 }
 

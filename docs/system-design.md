@@ -59,7 +59,7 @@ flowchart TD
 | 停用 | 设置 `enabled: false` | 不再参与推荐 |
 | 删除 | 移除该候选 | 不再参与推荐；已吃历史仍保留快照 |
 
-已有 `dinner:catalog` 时，上述清单修改需先停止宿主、删除该键并重启；仅修改 `tag_groups` 可直接重启。
+已有 `dinner:catalog` 时，上述清单修改需先停止宿主、删除该键并重启；仅新增标签或修改未被存储清单使用的标签可直接重启。
 
 ID 标识同一个用餐选项，不能把旧 ID 改作另一个选项使用。这样名称修改不会割断历史，也不会让新选项继承无关的重复惩罚。
 
@@ -245,7 +245,7 @@ whatfordinner/
 
 `Metadata` 声明 `bot.PermStorage`；只回复当前消息，不需要主动发送或网络权限。`Setup` 保存依赖并注册 `OnCommand("dinner", ...)`，子命令由插件解析。没有后台任务，`Start/Stop` 返回 `nil`。
 
-最小宿主配置示例（候选均为示例数据）：
+最小宿主配置示例（仅适用于迁移前版本；当前配置使用 `plugins.dinner.catalog_seed`）：
 
 ```yaml
 bots:

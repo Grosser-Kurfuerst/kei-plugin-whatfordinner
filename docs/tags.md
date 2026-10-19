@@ -52,4 +52,4 @@
 1. 在 [`config.yaml`](../config.yaml) 的 `plugins.dinner.tag_groups` 中增加或修改标签。
 2. 把新标签加到 [`data/restaurants.yaml`](../data/restaurants.yaml) 对应餐厅的 `tags`，或留作未来使用的词表项。
 3. 同步更新本文件的词表。
-4. 仅修改 `tag_groups` 时直接重启，`/dinner 标签` 会展示新词表。若同时修改了 `restaurants.yaml` 中的餐厅标签，需先停止宿主并删除 `dinner:catalog`，再重启并重新导入；否则已有存储不会读取新 seed。删除命令见 [维护清单](usage.md#维护清单)。
+4. 仅新增标签，或修改未被存储清单使用的标签时，可直接重启；删除、改名仍被清单使用的标签，或修改 `restaurants.yaml` 中的餐厅标签时，需先停止宿主、更新 seed、删除 `dinner:catalog` 再重启，否则启动校验失败或新清单不生效。删除命令见 [维护清单](usage.md#维护清单)。
