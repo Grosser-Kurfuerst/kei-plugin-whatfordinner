@@ -213,7 +213,7 @@ func (s *PollService) Vote(ctx context.Context, scope PollScope, voter, id strin
 	if _, ok := optionByID(state.Options, id); !ok {
 		return PollView{}, ErrInvalidOption
 	}
-	option, ok := s.personal.catalog.Find(id)
+	option, ok := s.personal.FindCatalogOption(id)
 	if !ok || !matches(option, state.Profile) {
 		return PollView{}, ErrPollOptionUnavailable
 	}
@@ -250,7 +250,7 @@ func (s *PollService) MarkEaten(ctx context.Context, pollScope PollScope, scope 
 		if !ok {
 			return Recommendation{}, ErrInvalidOption
 		}
-		catalogOption, found := s.personal.catalog.Find(option.ID)
+		catalogOption, found := s.personal.FindCatalogOption(option.ID)
 		if !found || !matches(catalogOption, state.Profile) {
 			return Recommendation{}, ErrPollOptionUnavailable
 		}
@@ -309,7 +309,7 @@ func (s *PollService) SetExcludedTags(ctx context.Context, scope PollScope, tags
 	if err != nil {
 		return Profile{}, err
 	}
-	hasTag := s.personal.catalog.HasTag
+	hasTag := s.personal.HasCatalogTag
 	if s.tags != nil {
 		hasTag = s.tags.Has
 	}
@@ -357,7 +357,7 @@ func (s *PollService) view(state PollState) PollView {
 	}
 	view := PollView{Date: state.Date, Profile: state.Profile, Voters: len(state.Ballots)}
 	for _, saved := range state.Options {
-		option, found := s.personal.catalog.Find(saved.ID)
+		option, found := s.personal.FindCatalogOption(saved.ID)
 		entry := PollEntry{Option: saved, Votes: counts[saved.ID], Available: found && matches(option, state.Profile)}
 		if found {
 			entry.Option = snapshot(option)

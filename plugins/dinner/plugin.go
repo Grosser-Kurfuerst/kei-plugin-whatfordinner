@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand/v2"
+	"sync"
 	"time"
 
 	"example.com/whatfordinner/internal/catalog"
@@ -16,17 +17,18 @@ import (
 
 // Plugin 是独立的晚饭插件实例。
 type Plugin struct {
-	catalog *catalog.Catalog
 	tags    *tagTaxonomy
 	service *decision.Service
 	polls   *decision.PollService
+	repo    *catalog.Repository
+	adminMu sync.Mutex
 }
 
 var _ bot.Plugin = (*Plugin)(nil)
 
-// Metadata 返回插件名称和所需存储权限。
+// Metadata 返回插件名称和所需权限。
 func (*Plugin) Metadata() bot.Metadata {
-	return bot.Metadata{Name: "dinner", Version: "v0.1.0", Description: "晚饭候选清单与个人决策", Permissions: []bot.Permission{bot.PermStorage}}
+	return bot.Metadata{Name: "dinner", Version: "v0.1.0", Description: "晚饭候选清单与个人决策", Permissions: []bot.Permission{bot.PermStorage, bot.PermAdmin}}
 }
 
 // Setup 从框架配置和独立 seed 文件构建清单并注册命令。
@@ -71,8 +73,8 @@ func (p *Plugin) Setup(ctx context.Context, reg bot.Registrar) error {
 			return err
 		}
 	}
-	p.catalog = c
 	p.tags = tags
+	p.repo = repo
 	store := state.New(pc.Storage)
 	service, err := decision.New(c, store, time.Now, rand.Float64)
 	if err != nil {
@@ -81,6 +83,7 @@ func (p *Plugin) Setup(ctx context.Context, reg bot.Registrar) error {
 	p.service = service
 	p.polls = decision.NewPollService(service, store, tags)
 	reg.OnCommand("dinner", p.handle, bot.WithID("dinner:command"))
+	reg.OnCommand("dinner-admin", p.handleAdmin, bot.WithAdmin(), bot.WithID("dinner:admin"))
 	return nil
 }
 

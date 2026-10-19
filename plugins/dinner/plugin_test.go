@@ -55,8 +55,8 @@ func setupPluginWithStorage(t *testing.T, seedPath string, storage *testStorage)
 	return p
 }
 
-// setupPluginAt 使用可控时钟和固定随机值重建服务，避免跨零点与概率导致的测试抖动。
-func setupPluginAt(t *testing.T, items []any, now func() time.Time) (*Plugin, bot.Handler, *testStorage) {
+// setupPluginWithReg 装配插件并返回命令注册器，供管理员命令测试直接取规则。
+func setupPluginWithReg(t *testing.T, items []any, now func() time.Time) (*Plugin, *bot.RecordingRegistrar, *testStorage) {
 	t.Helper()
 	p := &Plugin{}
 	reg := bot.NewRecordingRegistrar()
@@ -65,16 +65,27 @@ func setupPluginAt(t *testing.T, items []any, now func() time.Time) (*Plugin, bo
 	if err := p.Setup(ctx, reg); err != nil {
 		t.Fatal(err)
 	}
-	rule, ok := reg.Command("dinner")
-	if !ok {
-		t.Fatal("missing command")
+	initial, err := catalog.New(p.service.ListCatalog())
+	if err != nil {
+		t.Fatal(err)
 	}
-	service, err := decision.New(p.catalog, state.New(storage), now, func() float64 { return 0 })
+	service, err := decision.New(initial, state.New(storage), now, func() float64 { return 0 })
 	if err != nil {
 		t.Fatal(err)
 	}
 	p.service = service
 	p.polls = decision.NewPollService(service, state.New(storage), p.tags)
+	return p, reg, storage
+}
+
+// setupPluginAt 使用可控时钟和固定随机值重建服务，避免跨零点与概率导致的测试抖动。
+func setupPluginAt(t *testing.T, items []any, now func() time.Time) (*Plugin, bot.Handler, *testStorage) {
+	t.Helper()
+	p, reg, storage := setupPluginWithReg(t, items, now)
+	rule, ok := reg.Command("dinner")
+	if !ok {
+		t.Fatal("missing command")
+	}
 	return p, rule.Handler, storage
 }
 
@@ -188,7 +199,7 @@ func TestCatalogImportReuseAndReimport(t *testing.T) {
 	}
 
 	p := setupPluginWithStorage(t, filepath.Join(t.TempDir(), "missing.yaml"), storage)
-	if items := p.catalog.List(); len(items) != 1 || items[0].ID != "a" {
+	if items := p.service.ListCatalog(); len(items) != 1 || items[0].ID != "a" {
 		t.Fatalf("stored catalog must load without seed, got %#v", items)
 	}
 
@@ -203,13 +214,13 @@ func TestCatalogImportReuseAndReimport(t *testing.T) {
 	}
 
 	p = setupPluginWithStorage(t, seed, storage)
-	if items := p.catalog.List(); len(items) != 1 || items[0].ID != "a" {
+	if items := p.service.ListCatalog(); len(items) != 1 || items[0].ID != "a" {
 		t.Fatalf("restart must reuse stored catalog, got %#v", items)
 	}
 
 	delete(storage.values, "dinner:catalog")
 	p = setupPluginWithStorage(t, seed, storage)
-	if items := p.catalog.List(); len(items) != 1 || items[0].ID != "b" {
+	if items := p.service.ListCatalog(); len(items) != 1 || items[0].ID != "b" {
 		t.Fatalf("reimport must use updated seed, got %#v", items)
 	}
 }

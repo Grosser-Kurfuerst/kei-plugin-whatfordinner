@@ -100,17 +100,23 @@ func formatCatalog(items []catalog.Option) string {
 	var b strings.Builder
 	b.WriteString("晚饭候选：")
 	for _, item := range items {
-		fmt.Fprintf(&b, "\n%s [%s]", item.Name, item.ID)
-		if item.Venue != "" {
-			fmt.Fprintf(&b, "，%s", item.Venue)
-		}
-		fmt.Fprintf(&b, "，%s", money(item.PriceCents))
-		if len(item.Tags) > 0 {
-			fmt.Fprintf(&b, "，标签：%s", strings.Join(item.Tags, "、"))
-		}
-		if !item.Enabled {
-			b.WriteString("（停用）")
-		}
+		b.WriteString("\n" + formatCatalogOption(item))
+	}
+	return b.String()
+}
+
+func formatCatalogOption(item catalog.Option) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s [%s]", item.Name, item.ID)
+	if item.Venue != "" {
+		fmt.Fprintf(&b, "，%s", item.Venue)
+	}
+	fmt.Fprintf(&b, "，%s", money(item.PriceCents))
+	if len(item.Tags) > 0 {
+		fmt.Fprintf(&b, "，标签：%s", strings.Join(item.Tags, "、"))
+	}
+	if !item.Enabled {
+		b.WriteString("（停用）")
 	}
 	return b.String()
 }

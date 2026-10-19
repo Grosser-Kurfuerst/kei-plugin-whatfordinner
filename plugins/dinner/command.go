@@ -19,7 +19,7 @@ func (p *Plugin) handle(ctx context.Context, e *bot.Event, r bot.Reply) error {
 		args = e.Command.Args
 	}
 	if len(args) == 1 && args[0] == "候选" {
-		return r.Text(formatCatalog(p.catalog.List())).Send(ctx)
+		return r.Text(formatCatalog(p.service.ListCatalog())).Send(ctx)
 	}
 	if len(args) == 1 && args[0] == "标签" {
 		return r.Text(formatTags(p.tags.allGroups())).Send(ctx)

@@ -31,6 +31,34 @@ func New(c *catalog.Catalog, store Store, now func() time.Time, randomFloat func
 	return &Service{catalog: c, store: store, now: now, randomFloat: randomFloat, location: location}, nil
 }
 
+// SetCatalog 替换当前清单；调用方必须传入已校验的 Catalog。
+func (s *Service) SetCatalog(c *catalog.Catalog) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.catalog = c
+}
+
+// ListCatalog 返回清单副本，包含停用项。
+func (s *Service) ListCatalog() []catalog.Option {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.catalog.List()
+}
+
+// FindCatalogOption 按 id 返回副本。
+func (s *Service) FindCatalogOption(id string) (catalog.Option, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.catalog.Find(id)
+}
+
+// HasCatalogTag 报告清单中是否有任一选项使用该标签。
+func (s *Service) HasCatalogTag(tag string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.catalog.HasTag(tag)
+}
+
 // RecommendFor 在当前会话的筛选条件下生成个人推荐，历史仍归属于个人。
 func (s *Service) RecommendFor(ctx context.Context, scope Scope, profile Profile) (Recommendation, error) {
 	return s.choose(ctx, scope, false, profile)

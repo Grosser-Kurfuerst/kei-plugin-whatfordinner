@@ -47,6 +47,19 @@ curl -s http://127.0.0.1:18080/sent
 
 同一群或频道当天共享列表、预算、忌口和已吃历史；私聊按用户独立。每人一票，按餐厅 id 投票，可改投。修改预算或忌口会重开列表并清空选票，重复查询保留选票；每天按上海时区零点换日。投票不会自动记录为“已吃”，需要手动发送 `/dinner 已吃 <id>`。
 
+## 管理餐厅清单
+
+仅宿主 `auth.admin_users` 中的用户可执行管理命令；本地 [config.yaml](config.yaml) 示例配置了 `u1`，生产环境替换为实际用户 ID。未配置管理员时命令会被 Auth 中间件拒绝。
+
+```sh
+/dinner-admin 添加 id=<id> | name=<名称> | price=<人均元> | venue=<地点> | tags=<标签1,标签2>
+/dinner-admin 帮助
+```
+
+`id` 和 `name` 必填；`price`、`venue`、`tags` 可选，省略 `price` 表示价格未知。`price` 必须是正数且最多两位小数；`tags` 用英文逗号分隔，只能使用 `/dinner 标签` 中列出的值；字段用 `|` 分隔，字段值不能包含 `|`。名称和地点可以包含空格。
+
+添加成功后，当前进程的 `/dinner 候选`、下一次列表生成和个人推荐立即使用新清单，无需重启。管理命令写入统一存储的 `dinner:catalog`，不修改 [data/restaurants.yaml](data/restaurants.yaml)；删除该存储键并重新导入 seed 会覆盖管理命令的改动。
+
 ## 接入已有 kei 程序
 
 插件随宿主 Go 程序编译，由 kei 管理生命周期。当前模块名为 `example.com/whatfordinner`，在宿主项目中使用本地 `replace` 接入：

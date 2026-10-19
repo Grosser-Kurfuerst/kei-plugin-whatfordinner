@@ -2,6 +2,10 @@
 # 标签分为大类、菜系、品类、就餐形式四层；词表和规则见 docs/tags.md。
 # tag_groups 是启动校验的唯一来源；data/restaurants.yaml 中的标签只能使用这里声明的值。
 # 餐厅清单作为首次接入统一存储的 seed 单独存放，不再写在本文件中。
+# 本地 Mock 试用管理员；生产环境替换为实际用户 ID。auth.admin_users 为空时 /dinner-admin 会被 Auth 中间件拒绝。
+auth:
+  admin_users:
+  - u1
 bots:
 - name: mock-main
   adapter: mock
