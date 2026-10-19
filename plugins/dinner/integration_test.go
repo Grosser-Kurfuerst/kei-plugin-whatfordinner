@@ -25,6 +25,7 @@ import (
 // TestSQLitePersistenceAcrossRestart 使用真实 kei 装配、Mock 适配器和 SQLite，
 // 验证投票与个人推荐在进程重启后仍然可查询。
 func TestSQLitePersistenceAcrossRestart(t *testing.T) {
+	clearKEIEnv(t)
 	dsn := filepath.Join(t.TempDir(), "dinner.db")
 	seed := filepath.Join(t.TempDir(), "restaurants.yaml")
 	if err := os.WriteFile(seed, []byte("items:\n- {id: a, name: A, price_cents: 1800, enabled: true}\n- {id: b, name: B, price_cents: 3000, enabled: true}\n"), 0o600); err != nil {
@@ -54,7 +55,7 @@ plugins:
     catalog_seed: %q
 `, addr, dsn, seed)
 
-	base, stop := startBot(t, addr, config)
+	base, stop := startBotWithCleanup(t, addr, config)
 	integrationInject(t, base, "/dinner 18")
 	integrationWaitSent(t, base, 1, "A [a] — 0 票")
 	integrationInject(t, base, "/dinner 投票 a")
@@ -67,7 +68,7 @@ plugins:
 	integrationWaitSent(t, base, 5, "A [a]")
 	stop()
 
-	base, stop = startBot(t, addr, config)
+	base, stop = startBotWithCleanup(t, addr, config)
 	defer stop()
 	integrationInject(t, base, "/dinner")
 	integrationWaitSent(t, base, 1, "[a] — 1 票")
@@ -78,6 +79,7 @@ plugins:
 }
 
 func TestCatalogStorageLifecycle(t *testing.T) {
+	clearKEIEnv(t)
 	dsn := filepath.Join(t.TempDir(), "catalog.db")
 	seed := filepath.Join(t.TempDir(), "restaurants.yaml")
 	writeSeed := func(content string) {
@@ -112,7 +114,7 @@ plugins:
     catalog_seed: %q
 `, addr, dsn, seed)
 
-	base, stop := startBot(t, addr, config)
+	base, stop := startBotWithCleanup(t, addr, config)
 	integrationInject(t, base, "/dinner 候选")
 	integrationWaitSent(t, base, 1, "A [a]")
 	stop()
@@ -121,7 +123,7 @@ plugins:
 	}
 
 	writeSeed("items:\n- {id: b, name: B, enabled: true}\n")
-	base, stop = startBot(t, addr, config)
+	base, stop = startBotWithCleanup(t, addr, config)
 	integrationInject(t, base, "/dinner 候选")
 	integrationWaitSent(t, base, 1, "A [a]")
 	if sent := integrationSent(t, base); strings.Contains(sent, "B [b]") {
@@ -130,7 +132,7 @@ plugins:
 	stop()
 
 	deleteCatalogKey(t, dsn)
-	base, stop = startBot(t, addr, config)
+	base, stop = startBotWithCleanup(t, addr, config)
 	integrationInject(t, base, "/dinner 候选")
 	integrationWaitSent(t, base, 1, "B [b]")
 	stop()
@@ -196,6 +198,36 @@ func freeAddr(t *testing.T) string {
 	}
 	defer ln.Close()
 	return ln.Addr().String()
+}
+
+// clearKEIEnv 移除环境变量对配置的覆盖，确保测试只使用内联配置。
+func clearKEIEnv(t *testing.T) {
+	t.Helper()
+	for _, entry := range os.Environ() {
+		key, value, ok := strings.Cut(entry, "=")
+		if !ok || !strings.HasPrefix(key, "KEI_") {
+			continue
+		}
+		if err := os.Unsetenv(key); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.Setenv(key, value) })
+	}
+}
+
+func startBotWithCleanup(t *testing.T, addr, config string) (string, func()) {
+	t.Helper()
+	base, stop := startBot(t, addr, config)
+	stopped := false
+	stopOnce := func() {
+		if stopped {
+			return
+		}
+		stopped = true
+		stop()
+	}
+	t.Cleanup(stopOnce)
+	return base, stopOnce
 }
 
 func startBot(t *testing.T, addr, config string) (string, func()) {

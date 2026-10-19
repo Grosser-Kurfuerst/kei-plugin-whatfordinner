@@ -119,6 +119,44 @@ func TestRepositorySaveAndLoad(t *testing.T) {
 	}
 }
 
+func TestRepositorySaveStorageFailure(t *testing.T) {
+	failure := errors.New("set failure")
+	storage := newFakeStorage()
+	storage.setErr = failure
+	err := NewRepository(storage).Save(context.Background(), testItems())
+	if !errors.Is(err, failure) || !strings.Contains(err.Error(), "save dinner catalog") {
+		t.Fatalf("Save error = %v, want storage failure with prefix", err)
+	}
+	if len(storage.values) != 0 {
+		t.Fatal("failed Save must not write catalog")
+	}
+}
+
+func TestRepositoryJSONContract(t *testing.T) {
+	storage := newFakeStorage()
+	if err := NewRepository(storage).Save(context.Background(), testItems()); err != nil {
+		t.Fatal(err)
+	}
+	var document struct {
+		Version int                          `json:"version"`
+		Items   []map[string]json.RawMessage `json:"items"`
+	}
+	if err := json.Unmarshal(storage.setValue, &document); err != nil {
+		t.Fatal(err)
+	}
+	if document.Version != 1 {
+		t.Fatalf("version = %d, want 1", document.Version)
+	}
+	if len(document.Items) != 1 {
+		t.Fatalf("items length = %d, want 1", len(document.Items))
+	}
+	for _, key := range []string{"id", "name", "venue", "price_cents", "tags", "enabled"} {
+		if _, ok := document.Items[0][key]; !ok {
+			t.Fatalf("missing JSON field %q in %s", key, storage.setValue)
+		}
+	}
+}
+
 func TestRepositorySaveNormalizes(t *testing.T) {
 	storage := newFakeStorage()
 	repository := NewRepository(storage)

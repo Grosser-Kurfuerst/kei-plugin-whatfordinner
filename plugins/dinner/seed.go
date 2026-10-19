@@ -2,7 +2,9 @@ package dinner
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -29,6 +31,9 @@ func loadCatalogSeed(path string) ([]catalog.Option, error) {
 	decoder := yaml.NewDecoder(bytes.NewReader(data))
 	decoder.KnownFields(true)
 	if err := decoder.Decode(&seed); err != nil {
+		if errors.Is(err, io.EOF) {
+			return nil, fmt.Errorf("dinner: catalog_seed %q 文件为空", path)
+		}
 		return nil, fmt.Errorf("dinner: 解析 catalog_seed %q: %w", path, err)
 	}
 	return seed.Items, nil

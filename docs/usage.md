@@ -74,9 +74,18 @@ curl -s http://127.0.0.1:18080/sent
 
 ## 维护清单
 
-直接编辑独立清单 `data/restaurants.yaml` 并重启；`config.yaml` 的 `plugins.dinner.catalog_seed` 指向该文件。首次启动且 `dinner:catalog` 不存在时导入，之后以存储为准；修改 seed 后需删除该键并重启才能重新导入。独立 catalog 模块负责校验、查询清单，投票和个人推荐复用它，不加入运行时地图查询。
+直接编辑独立清单 `data/restaurants.yaml`；`config.yaml` 的 `plugins.dinner.catalog_seed` 指向该文件。首次启动且 `dinner:catalog` 不存在时导入，之后以存储为准。独立 catalog 模块负责校验、查询清单，投票和个人推荐复用它，不加入运行时地图查询。
+
+修改 seed 后需要重新导入。先停止宿主，再删除存储键；当前 `storage.type: sqlite`、`storage.dsn: ./kei.db` 的配置可执行：
+
+```sh
+sqlite3 ./kei.db "DELETE FROM kei_storage WHERE key = 'dinner:catalog';"
+```
+
+其他存储后端删除同名键即可。删除该键不会影响个人历史、投票和已吃记录。然后重启宿主。
 
 ```yaml
+items:
 - id: stable-restaurant-id
   name: 餐厅名称
   venue: 门店地址
@@ -85,6 +94,6 @@ curl -s http://127.0.0.1:18080/sent
   enabled: true
 ```
 
-`id` 必须唯一、稳定、区分大小写且不含空白字符；价格单位为分，未知时省略；`enabled: false` 停用。已生成列表中的失效餐厅保留 id 并标明不可用。修改价格、名称后按新配置展示；历史保留实际记录时的快照。
+`id` 必须唯一、稳定、区分大小写且不含空白字符；价格单位为分，未知时省略；`enabled: false` 停用。已生成列表中的失效餐厅保留 id 并标明不可用。重新导入后按新清单展示；历史保留实际记录时的快照。
 
 标签配置在 `plugins.dinner.tag_groups`，固定为 `大类`、`菜系`、`品类`、`就餐形式` 四层；餐厅 [`data/restaurants.yaml`](../data/restaurants.yaml) 中 `items[].tags` 只能使用其中声明的值，否则插件启动失败。词表允许提前加入暂时没有餐厅使用的标签。完整词表和新增规则见 [标签规范](tags.md)；清单存储迁移计划见 [清单存储迁移方案](storage-migration-plan.md)；未核验具体食材，不能据此确认辣度或过敏原。

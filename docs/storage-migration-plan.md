@@ -6,7 +6,7 @@
 
 - 清单不再写在 `config.yaml`，改为独立文件 `data/restaurants.yaml`。
 - 首次接入存储时，如果 `dinner:catalog` 不存在，读取 seed 并导入。
-- 导入成功后，存储是唯一运行时来源；seed 只在存储为空时使用。
+- 导入成功后，存储是唯一运行时来源；seed 只在 `dinner:catalog` 不存在时使用。
 - 清单模块保持纯内存查询，不在每次推荐时访问存储。
 - 第一阶段不新增管理命令，不支持运行时热更新；修改清单后通过删除存储键并重启完成重新导入。
 
@@ -106,7 +106,13 @@ Setup
 第一阶段不提供运行时热更新：
 
 - 修改 seed 后，已有 `dinner:catalog` 不会自动变化。
-- 需要重新导入时，删除 `dinner:catalog` 后重启。
+- 需要重新导入时，先停止宿主，删除 `dinner:catalog` 后重启。当前 SQLite 配置可执行：
+
+  ```sh
+  sqlite3 ./kei.db "DELETE FROM kei_storage WHERE key = 'dinner:catalog';"
+  ```
+
+  其他存储后端删除同名键。
 - 删除键不会影响个人状态、投票、已吃历史；它们使用不同的键前缀。
 - 后续如需管理命令，可在 `Repository.Save` 之上增加受权限控制的 `/dinner-admin`，不在本阶段实现。
 

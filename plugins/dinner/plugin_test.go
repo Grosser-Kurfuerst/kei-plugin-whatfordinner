@@ -136,6 +136,10 @@ func TestCatalogTagValidation(t *testing.T) {
 
 func TestCatalogSeedValidation(t *testing.T) {
 	dir := t.TempDir()
+	emptySeed := filepath.Join(dir, "empty.yaml")
+	if err := os.WriteFile(emptySeed, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	invalidYAML := filepath.Join(dir, "invalid.yaml")
 	if err := os.WriteFile(invalidYAML, []byte("items: [\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -150,6 +154,7 @@ func TestCatalogSeedValidation(t *testing.T) {
 		want string
 	}{
 		{name: "empty path", path: "", want: "catalog_seed 不能为空"},
+		{name: "empty file", path: emptySeed, want: "文件为空"},
 		{name: "missing file", path: filepath.Join(dir, "missing.yaml"), want: "读取 catalog_seed"},
 		{name: "invalid yaml", path: invalidYAML, want: "解析 catalog_seed"},
 		{name: "unknown field", path: unknownField, want: "解析 catalog_seed"},
@@ -182,6 +187,11 @@ func TestCatalogImportReuseAndReimport(t *testing.T) {
 		t.Fatalf("imported catalog = %#v, want only a", loaded)
 	}
 
+	p := setupPluginWithStorage(t, filepath.Join(t.TempDir(), "missing.yaml"), storage)
+	if items := p.catalog.List(); len(items) != 1 || items[0].ID != "a" {
+		t.Fatalf("stored catalog must load without seed, got %#v", items)
+	}
+
 	updated, err := yaml.Marshal(map[string]any{"items": []any{
 		map[string]any{"id": "b", "name": "B", "enabled": true},
 	}})
@@ -192,7 +202,7 @@ func TestCatalogImportReuseAndReimport(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	p := setupPluginWithStorage(t, seed, storage)
+	p = setupPluginWithStorage(t, seed, storage)
 	if items := p.catalog.List(); len(items) != 1 || items[0].ID != "a" {
 		t.Fatalf("restart must reuse stored catalog, got %#v", items)
 	}
@@ -218,6 +228,26 @@ func TestCatalogStorageReadFailureDoesNotFallback(t *testing.T) {
 	}
 	if _, ok := storage.values["dinner:catalog"]; ok {
 		t.Fatal("read failure must not write catalog")
+	}
+}
+
+func TestCatalogImportSaveFailure(t *testing.T) {
+	failure := errors.New("save failure")
+	storage := &testStorage{values: map[string][]byte{}, setErr: failure}
+	p := &Plugin{}
+	reg := bot.NewRecordingRegistrar()
+	ctx := bot.WithPluginContext(context.Background(), bot.PluginContext{Storage: storage, Config: bot.NewConfig(map[string]any{
+		"tag_groups":   testTagGroups(),
+		"catalog_seed": writeSeedFile(t, []any{map[string]any{"id": "a", "name": "A", "enabled": true}}),
+	})})
+	if err := p.Setup(ctx, reg); !errors.Is(err, failure) {
+		t.Fatalf("Setup error = %v, want save failure", err)
+	}
+	if _, ok := storage.values["dinner:catalog"]; ok {
+		t.Fatal("failed import must not write catalog")
+	}
+	if _, ok := reg.Command("dinner"); ok {
+		t.Fatal("failed import must not register command")
 	}
 }
 

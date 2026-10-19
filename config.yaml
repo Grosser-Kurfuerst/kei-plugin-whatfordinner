@@ -1,5 +1,4 @@
 # 餐厅 seed 更新于 2026-10-19；来源、距离与价格口径见 docs/restaurant-sources.md。
-# price_cents 为公开来源参考人均（分）；未核实的价格省略，不参与有限预算抽选。
 # 标签分为大类、菜系、品类、就餐形式四层；词表和规则见 docs/tags.md。
 # tag_groups 是启动校验的唯一来源；data/restaurants.yaml 中的标签只能使用这里声明的值。
 # 餐厅清单作为首次接入统一存储的 seed 单独存放，不再写在本文件中。
